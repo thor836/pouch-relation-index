@@ -154,8 +154,9 @@ function refreshIndex(name) {
                     var tb = utils.wrapTableName('_ri_' + indexInfo.index_name);
                     var fields = utils.getFields(['_id', '_rev'].concat(indexInfo.fields));
                     var sqlStatements = docs.map(function (doc) {
-                        var p = Array(fields.length).fill('?');
+                        var p = [];
                         var args = fields.map(function (f) {
+                            p.push('?');
                             return utils.resolve(doc, f.name, null);
                         });
                         return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
@@ -183,8 +184,9 @@ function fillIndexTable(pouch, db, indexInfo, start) {
             var tb = utils.wrapTableName('_ri_' + indexInfo.index_name);
             var fields = utils.getFields(['_id', '_rev'].concat(indexInfo.fields));
             var sqlStatements = res.rows.map(function (r) {
-                var p = Array(fields.length).fill('?');
+                var p = [];
                 var args = fields.map(function (f) {
+                    p.push('?');
                     return utils.resolve(r.doc, f.name, null);
                 });
                 return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
