@@ -1,10 +1,8 @@
 {
   "name": "pouchdb-relation-index",
+  "version": "0.0.1",
   "description": "PouchDB Relation Index plugin",
   "main": "index.js",
-  "repository": {
-    "type": "git",
-  },
   "keywords": [
     "pouch",
     "pouchdb",
@@ -16,8 +14,6 @@
   ],
   "author": "",
   "license": "",
-  "bugs": {
-  },
   "scripts": {
     "build": "mkdirp dist && npm run browserify && npm run min",
     "browserify": "browserify index.js | derequire > dist/pouch-relation-index.js",

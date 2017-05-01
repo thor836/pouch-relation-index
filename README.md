@@ -9,10 +9,10 @@ Building
 API
 -------
 
-db.createIndex(name, type, fields);
-db.buildIndex(name);
-db.queryIndex(name, query, order);
-db.deleteIndex(name);
+* db.createIndex(name, type, fields);
+* db.buildIndex(name);
+* db.queryIndex(name, query, order);
+* db.deleteIndex(name);
 
 **Options**
 
