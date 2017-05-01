@@ -126,6 +126,45 @@ function deleteIndex(name) {
         executeSql(db, 'DROP TABLE IF EXISTS `_ri_'+ name +'`')]);
 }
 
+/**
+ * Fast refresh index. Adds a new documents to index table
+ * @param name Index name
+ */
+function refreshIndex(name) {
+    var c = checkCompatibility(this);
+    if (c)
+        return Promise.reject(c);
+    var db = utils.openDB(this._name);
+
+    return getIndexInfo(db, name)
+        .then(function (indexInfo) {
+            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND`by-sequence`.deleted = 0';
+            return executeSql(db, sql)
+                .then(function (res) {
+                    var docs = [];
+                    for (var i = 0; i < res.rows.length; i++) {
+                        var row = res.rows.item(i);
+                        var doc = utils.unstringifyDoc(row.data, row.id, row.rev);
+                        doc.type === indexInfo.doc_type && docs.push(doc);
+                    }
+                    if (!docs.length)
+                        return;
+
+                    var tb = utils.wrapTableName('_ri_' + indexInfo.index_name);
+                    var fields = utils.getFields(['_id', '_rev'].concat(indexInfo.fields));
+                    var sqlStatements = docs.map(function (doc) {
+                        var p = Array(fields.length).fill('?');
+                        var args = fields.map(function (f) {
+                            return utils.resolve(doc, f.name, null);
+                        });
+                        return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
+                    });
+                    console.log(sqlStatements);
+                    return batchInsert(db, sqlStatements);
+                });
+        })
+}
+
 function fillIndexTable(pouch, db, indexInfo, start) {
     var limit = 1000;
     start = start || 0;
@@ -243,10 +282,12 @@ function getIndexInfo(db, name) {
         });
 }
 
+
 exports.createIndex = createIndex;
 exports.buildIndex = buildIndex;
 exports.queryIndex = queryIndex;
 exports.deleteIndex = deleteIndex;
+exports.refreshIndex = refreshIndex;
 
 /* istanbul ignore next */
 if (typeof window !== 'undefined' && window.PouchDB) {
