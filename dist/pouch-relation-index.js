@@ -139,14 +139,14 @@ function refreshIndex(name) {
 
     return getIndexInfo(db, name)
         .then(function (indexInfo) {
-            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND`by-sequence`.deleted = 0';
-            return executeSql(db, sql)
+            docTypeLen = indexInfo.doc_type.length;
+            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND substr(`document-store`.id, 1, '+ docTypeLen +') = ? AND`by-sequence`.deleted = 0';
+            return executeSql(db, sql, [indexInfo.doc_type])
                 .then(function (res) {
                     var docs = [];
                     for (var i = 0; i < res.rows.length; i++) {
                         var row = res.rows.item(i);
-                        var doc = utils.unstringifyDoc(row.data, row.id, row.rev);
-                        doc.type === indexInfo.doc_type && docs.push(doc);
+                        docs.push(utils.unstringifyDoc(row.data, row.id, row.rev));
                     }
                     if (!docs.length)
                         return;
