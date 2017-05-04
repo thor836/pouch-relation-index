@@ -1,4 +1,13 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
+var openDb = _dereq_('./open-database-browser');
+var relIndex = _dereq_('./index').init(openDb.open);
+
+/* istanbul ignore next */
+if (typeof window !== 'undefined' && window.PouchDB) {
+    window.PouchDB.plugin(relIndex);
+}
+
+},{"./index":2,"./open-database-browser":6}],2:[function(_dereq_,module,exports){
 var queryBuilder = _dereq_('./query-builder.js');
 var utils = _dereq_('./utils');
 var Promise = _dereq_('lie');
@@ -15,6 +24,7 @@ function IndexExistsError(name) {
 IndexExistsError.prototype = Error.prototype;
 IndexExistsError.prototype.constructor = IndexExistsError;
 
+var OPENDB;
 
 /**
  * Create index table
@@ -23,7 +33,7 @@ IndexExistsError.prototype.constructor = IndexExistsError;
  * @param fields Indexed fields
  */
 function createIndex(name, type, fields) {
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     fields = utils.getFields(fields);
     var json = JSON.stringify(fields);
     var c = checkCompatibility(this);
@@ -55,7 +65,7 @@ function createIndex(name, type, fields) {
  * @param name Index name
  */
 function buildIndex(name) {
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     var pouch = this;
     var c = checkCompatibility(this);
     if (c)
@@ -84,7 +94,7 @@ function queryIndex(name, query, order) {
     if (c)
         return Promise.reject(c);
 
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     return getIndexInfo(db, name)
         .then(function (info) {
             var tableName = '_ri_' + name;
@@ -121,10 +131,10 @@ function deleteIndex(name) {
     if (c)
         return Promise.reject(c);
 
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     return Promise.all([
         executeSql(db, 'DELETE FROM \'relation-indexes\' WHERE index_name = ?', [name]),
-        executeSql(db, 'DROP TABLE IF EXISTS `_ri_'+ name +'`')]);
+        executeSql(db, 'DROP TABLE IF EXISTS `_ri_' + name + '`')]);
 }
 
 /**
@@ -135,12 +145,12 @@ function refreshIndex(name) {
     var c = checkCompatibility(this);
     if (c)
         return Promise.reject(c);
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
 
     return getIndexInfo(db, name)
         .then(function (indexInfo) {
             docTypeLen = indexInfo.doc_type.length;
-            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND substr(`document-store`.id, 1, '+ docTypeLen +') = ? AND`by-sequence`.deleted = 0';
+            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND substr(`document-store`.id, 1, ' + docTypeLen + ') = ? AND`by-sequence`.deleted = 0';
             return executeSql(db, sql, [indexInfo.doc_type])
                 .then(function (res) {
                     var docs = [];
@@ -285,19 +295,17 @@ function getIndexInfo(db, name) {
         });
 }
 
-
-exports.createIndex = createIndex;
-exports.buildIndex = buildIndex;
-exports.queryIndex = queryIndex;
-exports.deleteIndex = deleteIndex;
-exports.refreshIndex = refreshIndex;
-
-/* istanbul ignore next */
-if (typeof window !== 'undefined' && window.PouchDB) {
-    window.PouchDB.plugin(exports);
-}
-
-},{"./query-builder.js":5,"./utils":6,"lie":3}],2:[function(_dereq_,module,exports){
+exports.init = function (openDbFn) {
+    OPENDB = openDbFn;
+    return {
+        createIndex: createIndex,
+        buildIndex: buildIndex,
+        queryIndex: queryIndex,
+        deleteIndex: deleteIndex,
+        refreshIndex: refreshIndex
+    };
+};
+},{"./query-builder.js":7,"./utils":8,"lie":4}],3:[function(_dereq_,module,exports){
 (function (global){
 'use strict';
 var Mutation = global.MutationObserver || global.WebKitMutationObserver;
@@ -370,7 +378,7 @@ function immediate(task) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],3:[function(_dereq_,module,exports){
+},{}],4:[function(_dereq_,module,exports){
 'use strict';
 var immediate = _dereq_('immediate');
 
@@ -625,7 +633,7 @@ function race(iterable) {
   }
 }
 
-},{"immediate":2}],4:[function(_dereq_,module,exports){
+},{"immediate":3}],5:[function(_dereq_,module,exports){
 'use strict';
 
 /**
@@ -800,7 +808,28 @@ exports.parse = function (str) {
   }
 };
 
-},{}],5:[function(_dereq_,module,exports){
+},{}],6:[function(_dereq_,module,exports){
+function getSize() {
+    var isAndroid = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent);
+    return isAndroid ? 5000000 : 1;
+}
+
+/* global cordova, sqlitePlugin, openDatabase */
+exports.open = function (name) {
+    var size = getSize();
+    var version = 1;
+    if (typeof sqlitePlugin !== 'undefined') {
+        return sqlitePlugin.openDatabase({
+            name: name,
+            version: version,
+            description: '',
+            size: size
+        });
+    }
+    return openDatabase(name, version, '', size);
+};
+
+},{}],7:[function(_dereq_,module,exports){
 function query(obj, tableName) {
     var args = [];
     var str = parseObject(obj, tableName, args);
@@ -890,30 +919,10 @@ function parseSingleKeyValue(key, val, tableName, args) {
 }
 
 exports.query = query;
-},{}],6:[function(_dereq_,module,exports){
+},{}],8:[function(_dereq_,module,exports){
 'use strict';
 
 var vuvuzela = _dereq_('vuvuzela');
-
-function getSize() {
-    var isAndroid = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent);
-    return isAndroid ? 5000000 : 1;
-}
-
-/* global cordova, sqlitePlugin, openDatabase */
-exports.openDB = function (name) {
-    var size = getSize();
-    var version = 1;
-    if (typeof sqlitePlugin !== 'undefined') {
-        return sqlitePlugin.openDatabase({
-            name: name,
-            version: version,
-            description: '',
-            size: size
-        });
-    }
-    return openDatabase(name, version, '', size);
-};
 
 var getFields = exports.getFields = function (fields) {
     return fields.map(function (f) {
@@ -974,4 +983,4 @@ function safeJsonParse(str) {
         return vuvuzela.parse(str);
     }
 }
-},{"vuvuzela":4}]},{},[1]);
+},{"vuvuzela":5}]},{},[1]);

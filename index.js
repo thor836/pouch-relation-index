@@ -14,6 +14,7 @@ function IndexExistsError(name) {
 IndexExistsError.prototype = Error.prototype;
 IndexExistsError.prototype.constructor = IndexExistsError;
 
+var OPENDB;
 
 /**
  * Create index table
@@ -22,7 +23,7 @@ IndexExistsError.prototype.constructor = IndexExistsError;
  * @param fields Indexed fields
  */
 function createIndex(name, type, fields) {
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     fields = utils.getFields(fields);
     var json = JSON.stringify(fields);
     var c = checkCompatibility(this);
@@ -54,7 +55,7 @@ function createIndex(name, type, fields) {
  * @param name Index name
  */
 function buildIndex(name) {
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     var pouch = this;
     var c = checkCompatibility(this);
     if (c)
@@ -83,7 +84,7 @@ function queryIndex(name, query, order) {
     if (c)
         return Promise.reject(c);
 
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     return getIndexInfo(db, name)
         .then(function (info) {
             var tableName = '_ri_' + name;
@@ -120,10 +121,10 @@ function deleteIndex(name) {
     if (c)
         return Promise.reject(c);
 
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
     return Promise.all([
         executeSql(db, 'DELETE FROM \'relation-indexes\' WHERE index_name = ?', [name]),
-        executeSql(db, 'DROP TABLE IF EXISTS `_ri_'+ name +'`')]);
+        executeSql(db, 'DROP TABLE IF EXISTS `_ri_' + name + '`')]);
 }
 
 /**
@@ -134,12 +135,12 @@ function refreshIndex(name) {
     var c = checkCompatibility(this);
     if (c)
         return Promise.reject(c);
-    var db = utils.openDB(this._name);
+    var db = OPENDB(this._name);
 
     return getIndexInfo(db, name)
         .then(function (indexInfo) {
             docTypeLen = indexInfo.doc_type.length;
-            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND substr(`document-store`.id, 1, '+ docTypeLen +') = ? AND`by-sequence`.deleted = 0';
+            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND substr(`document-store`.id, 1, ' + docTypeLen + ') = ? AND`by-sequence`.deleted = 0';
             return executeSql(db, sql, [indexInfo.doc_type])
                 .then(function (res) {
                     var docs = [];
@@ -284,14 +285,13 @@ function getIndexInfo(db, name) {
         });
 }
 
-
-exports.createIndex = createIndex;
-exports.buildIndex = buildIndex;
-exports.queryIndex = queryIndex;
-exports.deleteIndex = deleteIndex;
-exports.refreshIndex = refreshIndex;
-
-/* istanbul ignore next */
-if (typeof window !== 'undefined' && window.PouchDB) {
-    window.PouchDB.plugin(exports);
-}
+exports.init = function (openDbFn) {
+    OPENDB = openDbFn;
+    return {
+        createIndex: createIndex,
+        buildIndex: buildIndex,
+        queryIndex: queryIndex,
+        deleteIndex: deleteIndex,
+        refreshIndex: refreshIndex
+    };
+};
