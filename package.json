@@ -15,18 +15,17 @@
   "author": "",
   "license": "",
   "scripts": {
-    "build": "mkdirp dist && npm run build:browser && npm run build:node && npm run min:browser && npm run min:node",
-    "build:browser": "browserify browser.js | derequire > dist/pouch-relation-index-browser.js",
-    "build:node": "browserify node.js | derequire > dist/pouch-relation-index-node.js",
-    "min:browser": "uglifyjs dist/pouch-relation-index-browser.js -mc > dist/pouch-relation-index-browser.min.js",
-    "min:node": "uglifyjs dist/pouch-relation-index-node.js -mc > dist/pouch-relation-index-node.min.js"
+    "build": "npm run browserify && npm run min",
+    "browserify": "browserify index.js | derequire > dist/pouch-relation-index.js",
+    "min": "uglifyjs dist/pouch-relation-index.js -mc > dist/pouch-relation-index.min.js"
   },
   "dependencies": {
     "pouchdb": "^6.2.0",
     "pouchdb-adapter-websql": "^6.2.0",
     "pouchdb-browser": "^6.2.0",
     "pouchdb-utils": "6.2.0",
-    "sqlite3": "^3.1.8"
+    "vuvuzela": "^1.0.3",
+    "websql": "^0.4.4"
   },
   "devDependencies": {
     "bluebird": "^3.4.0",

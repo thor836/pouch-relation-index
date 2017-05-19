@@ -1,6 +1,7 @@
 var queryBuilder = require('./query-builder.js');
 var utils = require('./utils');
 var Promise = require('lie');
+var openDatabase = require('websql');
 
 function NotFoundIndexError() {
     this.message = 'Index could not be found';
@@ -14,7 +15,15 @@ function IndexExistsError(name) {
 IndexExistsError.prototype = Error.prototype;
 IndexExistsError.prototype.constructor = IndexExistsError;
 
-var OPENDB;
+/**
+ * Return index info
+ * @param name
+ * @returns {*}
+ */
+function getIndex(name) {
+    var db = openDatabase(this._name, '1.0', 'description', 1);
+    return getIndexInfo(db, name);
+}
 
 /**
  * Create index table
@@ -23,7 +32,7 @@ var OPENDB;
  * @param fields Indexed fields
  */
 function createIndex(name, type, fields) {
-    var db = OPENDB(this._name);
+    var db = openDatabase(this._name, '1.0', 'description', 1);
     fields = utils.getFields(fields);
     var json = JSON.stringify(fields);
     var c = checkCompatibility(this);
@@ -55,7 +64,7 @@ function createIndex(name, type, fields) {
  * @param name Index name
  */
 function buildIndex(name) {
-    var db = OPENDB(this._name);
+    var db = openDatabase(this._name, '1.0', 'description', 1);
     var pouch = this;
     var c = checkCompatibility(this);
     if (c)
@@ -84,7 +93,7 @@ function queryIndex(name, query, order) {
     if (c)
         return Promise.reject(c);
 
-    var db = OPENDB(this._name);
+    var db = openDatabase(this._name, '1.0', 'description', 1);
     return getIndexInfo(db, name)
         .then(function (info) {
             var tableName = '_ri_' + name;
@@ -121,7 +130,7 @@ function deleteIndex(name) {
     if (c)
         return Promise.reject(c);
 
-    var db = OPENDB(this._name);
+    var db = openDatabase(this._name, '1.0', 'description', 1);
     return Promise.all([
         executeSql(db, 'DELETE FROM \'relation-indexes\' WHERE index_name = ?', [name]),
         executeSql(db, 'DROP TABLE IF EXISTS `_ri_' + name + '`')]);
@@ -135,7 +144,7 @@ function refreshIndex(name) {
     var c = checkCompatibility(this);
     if (c)
         return Promise.reject(c);
-    var db = OPENDB(this._name);
+    var db = openDatabase(this._name, '1.0', 'description', 1);
 
     return getIndexInfo(db, name)
         .then(function (indexInfo) {
@@ -210,16 +219,17 @@ function batchInsert(db, sqlStatements) {
             db.transaction(function (tx) {
                 utils.eachAsync(sqlStatements,
                     function (item, next) {
-                        tx.executeSql(item[0], item[1], function () {
-                            next();
-                        }, function (tx, e) {
-                            next(e);
-                        });
+                        tx.executeSql(item[0], item[1],
+                            function () {
+                                next();
+                            }, function (tx, e) {
+                                next(e);
+                            });
                     }, function (e) {
                         !e ? resolve() : reject(e);
                     });
             }, function (e) {
-                !e ? resolve() : reject(e);
+                reject(e);
             });
         }
     });
@@ -258,11 +268,12 @@ function createTable(db, table, fields) {
 function executeSql(db, sql, args) {
     return new Promise(function (resolve, reject) {
         db.transaction(function (tx) {
-            tx.executeSql(sql, args || [], function (tx, res) {
-                resolve(res);
-            }, function (tx, e) {
-                reject(e);
-            });
+            tx.executeSql(sql, args || [],
+                function (tx, res) {
+                    resolve(res);
+                }, function (tx, e) {
+                    reject(e);
+                });
         }, function (e) {
             reject(e);
         });
@@ -285,13 +296,9 @@ function getIndexInfo(db, name) {
         });
 }
 
-exports.init = function (openDbFn) {
-    OPENDB = openDbFn;
-    return {
-        createIndex: createIndex,
-        buildIndex: buildIndex,
-        queryIndex: queryIndex,
-        deleteIndex: deleteIndex,
-        refreshIndex: refreshIndex
-    };
-};
+exports.getIndex = getIndex;
+exports.createIndex = createIndex;
+exports.buildIndex = buildIndex;
+exports.queryIndex = queryIndex;
+exports.deleteIndex = deleteIndex;
+exports.refreshIndex = refreshIndex;
