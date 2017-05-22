@@ -18,7 +18,7 @@ function getIndex(name) {
     if (c)
         return Promise.reject(c);
 
-    var db = openDb(this._name);
+    var db = openDb(this);
     return initRelIndex(db)
         .then(function () {
             return getIndexInfo(db, name);
@@ -32,7 +32,7 @@ function getIndex(name) {
  * @param fields Indexed fields
  */
 function createIndex(name, type, fields) {
-    var db = openDb(this._name);
+    var db = openDb(this);
     fields = utils.getFields(fields);
     var json = JSON.stringify(fields);
     var c = checkCompatibility(this);
@@ -64,7 +64,7 @@ function createIndex(name, type, fields) {
  * @param name Index name
  */
 function buildIndex(name) {
-    var db = openDb(this._name);
+    var db = openDb(this);
     var pouch = this;
     var c = checkCompatibility(this);
     if (c)
@@ -93,7 +93,7 @@ function queryIndex(name, query, order) {
     if (c)
         return Promise.reject(c);
 
-    var db = openDb(this._name);
+    var db = openDb(this);
     return getIndexInfo(db, name)
         .then(function (info) {
             var tableName = '_ri_' + name;
@@ -130,7 +130,7 @@ function deleteIndex(name) {
     if (c)
         return Promise.reject(c);
 
-    var db = openDb(this._name);
+    var db = openDb(this);
     return initRelIndex(db)
         .then(function () {
             return Promise.all([
@@ -147,7 +147,7 @@ function refreshIndex(name) {
     var c = checkCompatibility(this);
     if (c)
         return Promise.reject(c);
-    var db = openDb(this._name);
+    var db = openDb(this);
 
     return getIndexInfo(db, name)
         .then(function (indexInfo) {
@@ -283,8 +283,16 @@ function executeSql(db, sql, args) {
     });
 }
 
-function openDb(name) {
-    return openDatabase(name, '1.0', '', 1);
+function openDb(pouch) {
+    if (pouch.adapter === 'cordova-sqlite' && window['sqlitePlugin'] && window.sqlitePlugin.openDatabase)
+        return window.sqlitePlugin.openDatabase({
+            name: pouch._name,
+            version: 1,
+            description: pouch._name,
+            size: 5000000
+        });
+
+    return openDatabase(pouch._name, '1.0', '', 1);
 }
 
 function getIndexInfo(db, name) {
