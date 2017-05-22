@@ -4,17 +4,9 @@ var utils = _dereq_('./utils');
 var Promise = _dereq_('lie');
 var openDatabase = _dereq_('websql');
 
-function NotFoundIndexError() {
-    this.message = 'Index could not be found';
+function indexExistsError(name) {
+    return {status: 404, error: 'Index with name \'' + name + '\' already exists and can not be created again;'};
 }
-NotFoundIndexError.prototype = Error.prototype;
-NotFoundIndexError.prototype.constructor = NotFoundIndexError;
-
-function IndexExistsError(name) {
-    this.message = 'Index with name \'' + name + '\' already exists and can not be created again;';
-}
-IndexExistsError.prototype = Error.prototype;
-IndexExistsError.prototype.constructor = IndexExistsError;
 
 /**
  * Return index info
@@ -22,8 +14,15 @@ IndexExistsError.prototype.constructor = IndexExistsError;
  * @returns {*}
  */
 function getIndex(name) {
-    var db = openDatabase(this._name, '1.0', 'description', 1);
-    return getIndexInfo(db, name);
+    var c = checkCompatibility(this);
+    if (c)
+        return Promise.reject(c);
+
+    var db = openDb(this._name);
+    return initRelIndex(db)
+        .then(function () {
+            return getIndexInfo(db, name);
+        });
 }
 
 /**
@@ -33,7 +32,7 @@ function getIndex(name) {
  * @param fields Indexed fields
  */
 function createIndex(name, type, fields) {
-    var db = openDatabase(this._name, '1.0', 'description', 1);
+    var db = openDb(this._name);
     fields = utils.getFields(fields);
     var json = JSON.stringify(fields);
     var c = checkCompatibility(this);
@@ -44,10 +43,10 @@ function createIndex(name, type, fields) {
         .then(function () {
             return getIndexInfo(db, name)
                 .then(function () {
-                    return Promise.reject(new IndexExistsError(name))
+                    return Promise.reject(indexExistsError(name))
                 })
                 .catch(function (e) {
-                    if (!(e instanceof NotFoundIndexError))
+                    if (e.status !== 404)
                         return Promise.reject(e);
                 });
         })
@@ -65,7 +64,7 @@ function createIndex(name, type, fields) {
  * @param name Index name
  */
 function buildIndex(name) {
-    var db = openDatabase(this._name, '1.0', 'description', 1);
+    var db = openDb(this._name);
     var pouch = this;
     var c = checkCompatibility(this);
     if (c)
@@ -94,7 +93,7 @@ function queryIndex(name, query, order) {
     if (c)
         return Promise.reject(c);
 
-    var db = openDatabase(this._name, '1.0', 'description', 1);
+    var db = openDb(this._name);
     return getIndexInfo(db, name)
         .then(function (info) {
             var tableName = '_ri_' + name;
@@ -131,10 +130,13 @@ function deleteIndex(name) {
     if (c)
         return Promise.reject(c);
 
-    var db = openDatabase(this._name, '1.0', 'description', 1);
-    return Promise.all([
-        executeSql(db, 'DELETE FROM \'relation-indexes\' WHERE index_name = ?', [name]),
-        executeSql(db, 'DROP TABLE IF EXISTS `_ri_' + name + '`')]);
+    var db = openDb(this._name);
+    return initRelIndex(db)
+        .then(function () {
+            return Promise.all([
+                executeSql(db, 'DELETE FROM \'relation-indexes\' WHERE index_name = ?', [name]),
+                executeSql(db, 'DROP TABLE IF EXISTS `_ri_' + name + '`')]);
+        });
 }
 
 /**
@@ -145,7 +147,7 @@ function refreshIndex(name) {
     var c = checkCompatibility(this);
     if (c)
         return Promise.reject(c);
-    var db = openDatabase(this._name, '1.0', 'description', 1);
+    var db = openDb(this._name);
 
     return getIndexInfo(db, name)
         .then(function (indexInfo) {
@@ -281,11 +283,15 @@ function executeSql(db, sql, args) {
     });
 }
 
+function openDb(name) {
+    return openDatabase(name, '1.0', '', 1);
+}
+
 function getIndexInfo(db, name) {
     return executeSql(db, 'SELECT * FROM \'relation-indexes\' WHERE index_name = ?', [name])
         .then(function (rs) {
             if (!rs.rows.length) {
-                return Promise.reject(new IndexExistsError(name));
+                return Promise.reject(indexExistsError(name));
             }
             var row = rs.rows.item(0);
             var fields = JSON.parse(row.json);
@@ -303,6 +309,11 @@ exports.buildIndex = buildIndex;
 exports.queryIndex = queryIndex;
 exports.deleteIndex = deleteIndex;
 exports.refreshIndex = refreshIndex;
+
+/* istanbul ignore next */
+if (typeof window !== 'undefined' && window.PouchDB) {
+    window.PouchDB.plugin(exports);
+}
 },{"./query-builder.js":6,"./utils":7,"lie":3,"websql":5}],2:[function(_dereq_,module,exports){
 (function (global){
 'use strict';
