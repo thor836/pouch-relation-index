@@ -39,7 +39,7 @@ function parseSingleKeyValue(key, val, tableName, args) {
     var result = '';
     switch (key) {
         case '$eq':
-            result = result + ' == ?';
+            result = result + ' = ?';
             args.push(val + '');
             break;
         case '$lt':
