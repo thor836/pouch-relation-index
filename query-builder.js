@@ -38,6 +38,10 @@ function parseObject(obj, tableName, args) {
 function parseSingleKeyValue(key, val, tableName, args) {
     var result = '';
     switch (key) {
+        case '$eq':
+            result = result + ' == ?';
+            args.push(val + '');
+            break;
         case '$lt':
             result = result + ' < ?';
             args.push(val + '');
