@@ -100,6 +100,9 @@ function queryIndex(name, query, order) {
             var q = query ? queryBuilder.query(query, tableName) : null;
             var where = q ? q.query : '';
             var args = q ? q.args : [];
+            args.forEach(function (a) {
+                return a ? a.toLowerCase() : a;
+            });
             where && (where = where + ' AND ');
 
             var orderBy = order ?
@@ -169,7 +172,8 @@ function refreshIndex(name) {
                         var p = [];
                         var args = fields.map(function (f) {
                             p.push('?');
-                            return utils.resolve(doc, f.name, null);
+                            var v = utils.resolve(doc, f.name, null);
+                            return v ? v.toString().toLowerCase() : v;
                         });
                         return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
                     });
@@ -199,7 +203,8 @@ function fillIndexTable(pouch, db, indexInfo, start) {
                 var p = [];
                 var args = fields.map(function (f) {
                     p.push('?');
-                    return utils.resolve(r.doc, f.name, null);
+                    var v = utils.resolve(r.doc, f.name, null);
+                    return v ? v.toString().toLowerCase() : v;
                 });
                 return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
             });
