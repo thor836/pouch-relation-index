@@ -296,7 +296,7 @@ function openDb(pouch) {
             size: 5000000
         });
 
-    return openDatabase(pouch._name, '1', '', 1);
+    return openDatabase(pouch._name, '1', '', 5000000);
 }
 
 function getIndexInfo(db, name) {
