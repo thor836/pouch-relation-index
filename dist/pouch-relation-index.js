@@ -106,8 +106,8 @@ function queryIndex(name, query, order) {
             where && (where = where + ' AND ');
 
             var orderBy = order ?
-                Object.keys(order).map(function (o) {
-                    return utils.wrapField(o, tableName) + ' ' + order[o].toUpperCase()
+                order.map(function (o) {
+                    return utils.wrapField(o, tableName);
                 }).join() : '';
             orderBy && (orderBy = orderBy + ',');
 
