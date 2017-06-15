@@ -1,8 +1,8 @@
 {
   "name": "pouchdb-relation-index",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "PouchDB Relation Index plugin",
-  "main": "index.js",
+  "main": "dist/pouch-relation-index.js",
   "keywords": [
     "pouch",
     "pouchdb",
@@ -12,12 +12,13 @@
     "couch",
     "couchdb"
   ],
-  "author": "",
+  "author": "Thor",
   "license": "",
   "scripts": {
-    "build": "npm run browserify && npm run min",
-    "browserify": "browserify index.js | derequire > dist/pouch-relation-index.js",
-    "min": "uglifyjs dist/pouch-relation-index.js -mc > dist/pouch-relation-index.min.js"
+    "build": "tsc && npm run browserify && npm run min",
+    "browserify": "browserify src/relationIndex.js | derequire > dist/pouch-relation-index.js",
+    "min": "uglifyjs dist/pouch-relation-index.js -mc > dist/pouch-relation-index.min.js",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "pouchdb": "^6.2.0",
@@ -28,6 +29,8 @@
     "websql": "^0.4.4"
   },
   "devDependencies": {
+    "@types/pouchdb": "^6.1.0",
+    "@types/websql": "0.0.27",
     "bluebird": "^3.4.0",
     "browserify": "^14.3.0",
     "chai": "^3.5.0",
@@ -43,6 +46,7 @@
     "request": "^2.36.0",
     "sauce-connect-launcher": "^1.2.2",
     "selenium-standalone": "^6.4.1",
+    "typescript": "2.3.3",
     "uglify-js": "^2.4.13",
     "watchify": "^3.1.0",
     "wd": "^1.2.0"

@@ -1,661 +1,4 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
-var queryBuilder = _dereq_('./query-builder.js');
-var utils = _dereq_('./utils');
-var Promise = _dereq_('lie');
-var openDatabase = _dereq_('websql');
-
-function indexExistsError(name) {
-    return {status: 404, error: 'Index with name \'' + name + '\' already exists and can not be created again;'};
-}
-
-/**
- * Return index info
- * @param name
- * @returns {*}
- */
-function getIndex(name) {
-    var c = checkCompatibility(this);
-    if (c)
-        return Promise.reject(c);
-
-    var db = openDb(this);
-    return initRelIndex(db)
-        .then(function () {
-            return getIndexInfo(db, name);
-        });
-}
-
-/**
- * Create index table
- * @param name Index name
- * @param type Documents type
- * @param fields Indexed fields
- */
-function createIndex(name, type, fields) {
-    var db = openDb(this);
-    fields = utils.getFields(fields);
-    var json = JSON.stringify(fields);
-    var c = checkCompatibility(this);
-    if (c)
-        return Promise.reject(c);
-
-    return initRelIndex(db)
-        .then(function () {
-            return getIndexInfo(db, name)
-                .then(function () {
-                    return Promise.reject(indexExistsError(name))
-                })
-                .catch(function (e) {
-                    if (e.status !== 404)
-                        return Promise.reject(e);
-                });
-        })
-        .then(function () {
-            return executeSql(db, "INSERT INTO 'relation-indexes' VALUES (?,?,?)", [name, type, json]);
-        })
-        .then(function () {
-            var tableName = '_ri_' + name;
-            return createTable(db, tableName, utils.getFields(['id', 'rev'].concat(fields)));
-        });
-}
-
-/**
- * Build index
- * @param name Index name
- */
-function buildIndex(name) {
-    var db = openDb(this);
-    var pouch = this;
-    var c = checkCompatibility(this);
-    if (c)
-        return Promise.reject(c);
-
-    return getIndexInfo(db, name)
-        .then(function (info) {
-            return executeSql(db, 'DELETE FROM ' + utils.wrapTableName('_ri_' + info.index_name))
-                .then(function () {
-                    return info;
-                });
-        })
-        .then(function (info) {
-            return fillIndexTable(pouch, db, info);
-        });
-}
-
-/**
- * Query specified index to find some documents
- * @param name {string} Index name
- * @param query {{}} MongoDB like selector
- * @param order {{field_name: 'ASC|DESC'}} Ordering
- */
-function queryIndex(name, query, order) {
-    var c = checkCompatibility(this);
-    if (c)
-        return Promise.reject(c);
-
-    var db = openDb(this);
-    return getIndexInfo(db, name)
-        .then(function (info) {
-            var tableName = '_ri_' + name;
-            var q = query ? queryBuilder.query(query, tableName) : null;
-            var where = q ? q.query : '';
-            var args = q ? q.args : [];
-            args.forEach(function (a) {
-                return a ? a.toLowerCase() : a;
-            });
-            where && (where = where + ' AND ');
-
-            var orderBy = order ?
-                order.map(function (o) {
-                    return utils.wrapField(o, tableName);
-                }).join() : '';
-            orderBy && (orderBy = orderBy + ',');
-
-            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nJOIN `_ri_' + name + '` ON `document-store`.id = `_ri_' + name + '`.id\nWHERE ' + where + '`by-sequence`.deleted = 0 ORDER BY ' + orderBy + ' `document-store`.id ASC';
-            return executeSql(db, sql, args);
-        })
-        .then(function (res) {
-            var docs = [];
-            for (var i = 0; i < res.rows.length; i++) {
-                var row = res.rows.item(i);
-                docs.push(utils.unstringifyDoc(row.data, row.id, row.rev));
-            }
-            return docs;
-        });
-}
-
-/**
- * Delete specified index
- * @param name Index name
- */
-function deleteIndex(name) {
-    var c = checkCompatibility(this);
-    if (c)
-        return Promise.reject(c);
-
-    var db = openDb(this);
-    return initRelIndex(db)
-        .then(function () {
-            return Promise.all([
-                executeSql(db, 'DELETE FROM \'relation-indexes\' WHERE index_name = ?', [name]),
-                executeSql(db, 'DROP TABLE IF EXISTS `_ri_' + name + '`')]);
-        });
-}
-
-/**
- * Fast refresh index. Adds a new documents to index table
- * @param name Index name
- */
-function refreshIndex(name) {
-    var c = checkCompatibility(this);
-    if (c)
-        return Promise.reject(c);
-    var db = openDb(this);
-
-    return getIndexInfo(db, name)
-        .then(function (indexInfo) {
-            docTypeLen = indexInfo.doc_type.length;
-            var sql = 'SELECT `by-sequence`.seq AS seq, `by-sequence`.deleted AS deleted, `by-sequence`.json AS data, `by-sequence`.rev AS rev, `document-store`.id AS id, `document-store`.json AS metadata \nFROM `document-store` \nJOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \nWHERE NOT EXISTS(SELECT 1 FROM `_ri_' + name + '` WHERE `document-store`.id = `_ri_' + name + '`.id ) AND substr(`document-store`.id, 1, ' + docTypeLen + ') = ? AND`by-sequence`.deleted = 0';
-            return executeSql(db, sql, [indexInfo.doc_type])
-                .then(function (res) {
-                    var docs = [];
-                    for (var i = 0; i < res.rows.length; i++) {
-                        var row = res.rows.item(i);
-                        docs.push(utils.unstringifyDoc(row.data, row.id, row.rev));
-                    }
-                    if (!docs.length)
-                        return;
-
-                    var tb = utils.wrapTableName('_ri_' + indexInfo.index_name);
-                    var fields = utils.getFields(['_id', '_rev'].concat(indexInfo.fields));
-                    var sqlStatements = docs.map(function (doc) {
-                        var p = [];
-                        var args = fields.map(function (f) {
-                            p.push('?');
-                            var v = utils.resolve(doc, f.name, null);
-                            return v ? v.toString().toLowerCase() : v;
-                        });
-                        return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
-                    });
-                    console.log(sqlStatements);
-                    return batchInsert(db, sqlStatements);
-                });
-        })
-}
-
-function fillIndexTable(pouch, db, indexInfo, start) {
-    var limit = 1000;
-    start = start || 0;
-    return pouch.allDocs({
-        startkey: indexInfo.doc_type,
-        endkey: indexInfo.doc_type + '\uFFFF',
-        include_docs: true,
-        skip: start,
-        limit: limit
-    })
-        .then(function (res) {
-            var len = res.rows.length;
-            if (!len)
-                return;
-            var tb = utils.wrapTableName('_ri_' + indexInfo.index_name);
-            var fields = utils.getFields(['_id', '_rev'].concat(indexInfo.fields));
-            var sqlStatements = res.rows.map(function (r) {
-                var p = [];
-                var args = fields.map(function (f) {
-                    p.push('?');
-                    var v = utils.resolve(r.doc, f.name, null);
-                    return v ? v.toString().toLowerCase() : v;
-                });
-                return ['INSERT INTO ' + tb + ' VALUES (' + p.join() + ')', args];
-            });
-            return batchInsert(db, sqlStatements)
-                .then(function () {
-                    if (len === 1000)
-                        return fillIndexTable(pouch, db, indexInfo, start + limit);
-                });
-        });
-}
-
-function batchInsert(db, sqlStatements) {
-    return new Promise(function (resolve, reject) {
-        if (typeof db.sqlBatch === 'function')
-            db.sqlBatch(sqlStatements,
-                function () {
-                    return resolve();
-                }, reject);
-        else {
-            db.transaction(function (tx) {
-                utils.eachAsync(sqlStatements,
-                    function (item, next) {
-                        tx.executeSql(item[0], item[1],
-                            function () {
-                                next();
-                            }, function (tx, e) {
-                                next(e);
-                            });
-                    }, function (e) {
-                        !e ? resolve() : reject(e);
-                    });
-            }, function (e) {
-                reject(e);
-            });
-        }
-    });
-}
-
-function checkCompatibility(pouch) {
-    if (pouch.adapter !== 'websql' && pouch.adapter !== 'cordova-sqlite')
-        return new Error('Relation Index plugin support only websql or cordova-sqlite adapters');
-}
-
-function initRelIndex(db) {
-    return createTable(db, 'relation-indexes', [
-        {
-            name: 'index_name',
-            type: 'TEXT'
-        }, {
-            name: 'doc_type',
-            type: 'TEXT'
-        }, {
-            name: 'json',
-            type: 'TEXT'
-        }]);
-}
-
-function createTable(db, table, fields) {
-    var fieldsSql = fields
-        .map(function (f) {
-            return '`' + f.name + '` ' + f.type;
-        })
-        .join();
-    return executeSql(db, 'CREATE TABLE IF NOT EXISTS \'' + table + '\' (' + fieldsSql + ')')
-        .then(function () {
-        });
-}
-
-function executeSql(db, sql, args) {
-    return new Promise(function (resolve, reject) {
-        db.transaction(function (tx) {
-            tx.executeSql(sql, args || [],
-                function (tx, res) {
-                    resolve(res);
-                }, function (tx, e) {
-                    reject(e);
-                });
-        }, function (e) {
-            reject(e);
-        });
-    });
-}
-
-function openDb(pouch) {
-    if (pouch.adapter === 'cordova-sqlite' && window['sqlitePlugin'] && window.sqlitePlugin.openDatabase)
-        return window.sqlitePlugin.openDatabase({
-            name: pouch._name,
-            version: 1,
-            description: pouch._name,
-            size: 5000000
-        });
-
-    return openDatabase(pouch._name, '1', '', 5000000);
-}
-
-function getIndexInfo(db, name) {
-    return executeSql(db, 'SELECT * FROM \'relation-indexes\' WHERE index_name = ?', [name])
-        .then(function (rs) {
-            if (!rs.rows.length) {
-                return Promise.reject(indexExistsError(name));
-            }
-            var row = rs.rows.item(0);
-            var fields = JSON.parse(row.json);
-            return {
-                index_name: row.index_name,
-                doc_type: row.doc_type,
-                fields: fields
-            };
-        });
-}
-
-exports.getIndex = getIndex;
-exports.createIndex = createIndex;
-exports.buildIndex = buildIndex;
-exports.queryIndex = queryIndex;
-exports.deleteIndex = deleteIndex;
-exports.refreshIndex = refreshIndex;
-
-/* istanbul ignore next */
-if (typeof window !== 'undefined' && window.PouchDB) {
-    window.PouchDB.plugin(exports);
-}
-},{"./query-builder.js":6,"./utils":7,"lie":3,"websql":5}],2:[function(_dereq_,module,exports){
-(function (global){
-'use strict';
-var Mutation = global.MutationObserver || global.WebKitMutationObserver;
-
-var scheduleDrain;
-
-{
-  if (Mutation) {
-    var called = 0;
-    var observer = new Mutation(nextTick);
-    var element = global.document.createTextNode('');
-    observer.observe(element, {
-      characterData: true
-    });
-    scheduleDrain = function () {
-      element.data = (called = ++called % 2);
-    };
-  } else if (!global.setImmediate && typeof global.MessageChannel !== 'undefined') {
-    var channel = new global.MessageChannel();
-    channel.port1.onmessage = nextTick;
-    scheduleDrain = function () {
-      channel.port2.postMessage(0);
-    };
-  } else if ('document' in global && 'onreadystatechange' in global.document.createElement('script')) {
-    scheduleDrain = function () {
-
-      // Create a <script> element; its readystatechange event will be fired asynchronously once it is inserted
-      // into the document. Do so, thus queuing up the task. Remember to clean up once it's been called.
-      var scriptEl = global.document.createElement('script');
-      scriptEl.onreadystatechange = function () {
-        nextTick();
-
-        scriptEl.onreadystatechange = null;
-        scriptEl.parentNode.removeChild(scriptEl);
-        scriptEl = null;
-      };
-      global.document.documentElement.appendChild(scriptEl);
-    };
-  } else {
-    scheduleDrain = function () {
-      setTimeout(nextTick, 0);
-    };
-  }
-}
-
-var draining;
-var queue = [];
-//named nextTick for less confusing stack traces
-function nextTick() {
-  draining = true;
-  var i, oldQueue;
-  var len = queue.length;
-  while (len) {
-    oldQueue = queue;
-    queue = [];
-    i = -1;
-    while (++i < len) {
-      oldQueue[i]();
-    }
-    len = queue.length;
-  }
-  draining = false;
-}
-
-module.exports = immediate;
-function immediate(task) {
-  if (queue.push(task) === 1 && !draining) {
-    scheduleDrain();
-  }
-}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],3:[function(_dereq_,module,exports){
-'use strict';
-var immediate = _dereq_('immediate');
-
-/* istanbul ignore next */
-function INTERNAL() {}
-
-var handlers = {};
-
-var REJECTED = ['REJECTED'];
-var FULFILLED = ['FULFILLED'];
-var PENDING = ['PENDING'];
-
-module.exports = Promise;
-
-function Promise(resolver) {
-  if (typeof resolver !== 'function') {
-    throw new TypeError('resolver must be a function');
-  }
-  this.state = PENDING;
-  this.queue = [];
-  this.outcome = void 0;
-  if (resolver !== INTERNAL) {
-    safelyResolveThenable(this, resolver);
-  }
-}
-
-Promise.prototype["catch"] = function (onRejected) {
-  return this.then(null, onRejected);
-};
-Promise.prototype.then = function (onFulfilled, onRejected) {
-  if (typeof onFulfilled !== 'function' && this.state === FULFILLED ||
-    typeof onRejected !== 'function' && this.state === REJECTED) {
-    return this;
-  }
-  var promise = new this.constructor(INTERNAL);
-  if (this.state !== PENDING) {
-    var resolver = this.state === FULFILLED ? onFulfilled : onRejected;
-    unwrap(promise, resolver, this.outcome);
-  } else {
-    this.queue.push(new QueueItem(promise, onFulfilled, onRejected));
-  }
-
-  return promise;
-};
-function QueueItem(promise, onFulfilled, onRejected) {
-  this.promise = promise;
-  if (typeof onFulfilled === 'function') {
-    this.onFulfilled = onFulfilled;
-    this.callFulfilled = this.otherCallFulfilled;
-  }
-  if (typeof onRejected === 'function') {
-    this.onRejected = onRejected;
-    this.callRejected = this.otherCallRejected;
-  }
-}
-QueueItem.prototype.callFulfilled = function (value) {
-  handlers.resolve(this.promise, value);
-};
-QueueItem.prototype.otherCallFulfilled = function (value) {
-  unwrap(this.promise, this.onFulfilled, value);
-};
-QueueItem.prototype.callRejected = function (value) {
-  handlers.reject(this.promise, value);
-};
-QueueItem.prototype.otherCallRejected = function (value) {
-  unwrap(this.promise, this.onRejected, value);
-};
-
-function unwrap(promise, func, value) {
-  immediate(function () {
-    var returnValue;
-    try {
-      returnValue = func(value);
-    } catch (e) {
-      return handlers.reject(promise, e);
-    }
-    if (returnValue === promise) {
-      handlers.reject(promise, new TypeError('Cannot resolve promise with itself'));
-    } else {
-      handlers.resolve(promise, returnValue);
-    }
-  });
-}
-
-handlers.resolve = function (self, value) {
-  var result = tryCatch(getThen, value);
-  if (result.status === 'error') {
-    return handlers.reject(self, result.value);
-  }
-  var thenable = result.value;
-
-  if (thenable) {
-    safelyResolveThenable(self, thenable);
-  } else {
-    self.state = FULFILLED;
-    self.outcome = value;
-    var i = -1;
-    var len = self.queue.length;
-    while (++i < len) {
-      self.queue[i].callFulfilled(value);
-    }
-  }
-  return self;
-};
-handlers.reject = function (self, error) {
-  self.state = REJECTED;
-  self.outcome = error;
-  var i = -1;
-  var len = self.queue.length;
-  while (++i < len) {
-    self.queue[i].callRejected(error);
-  }
-  return self;
-};
-
-function getThen(obj) {
-  // Make sure we only access the accessor once as required by the spec
-  var then = obj && obj.then;
-  if (obj && typeof obj === 'object' && typeof then === 'function') {
-    return function appyThen() {
-      then.apply(obj, arguments);
-    };
-  }
-}
-
-function safelyResolveThenable(self, thenable) {
-  // Either fulfill, reject or reject with error
-  var called = false;
-  function onError(value) {
-    if (called) {
-      return;
-    }
-    called = true;
-    handlers.reject(self, value);
-  }
-
-  function onSuccess(value) {
-    if (called) {
-      return;
-    }
-    called = true;
-    handlers.resolve(self, value);
-  }
-
-  function tryToUnwrap() {
-    thenable(onSuccess, onError);
-  }
-
-  var result = tryCatch(tryToUnwrap);
-  if (result.status === 'error') {
-    onError(result.value);
-  }
-}
-
-function tryCatch(func, value) {
-  var out = {};
-  try {
-    out.value = func(value);
-    out.status = 'success';
-  } catch (e) {
-    out.status = 'error';
-    out.value = e;
-  }
-  return out;
-}
-
-Promise.resolve = resolve;
-function resolve(value) {
-  if (value instanceof this) {
-    return value;
-  }
-  return handlers.resolve(new this(INTERNAL), value);
-}
-
-Promise.reject = reject;
-function reject(reason) {
-  var promise = new this(INTERNAL);
-  return handlers.reject(promise, reason);
-}
-
-Promise.all = all;
-function all(iterable) {
-  var self = this;
-  if (Object.prototype.toString.call(iterable) !== '[object Array]') {
-    return this.reject(new TypeError('must be an array'));
-  }
-
-  var len = iterable.length;
-  var called = false;
-  if (!len) {
-    return this.resolve([]);
-  }
-
-  var values = new Array(len);
-  var resolved = 0;
-  var i = -1;
-  var promise = new this(INTERNAL);
-
-  while (++i < len) {
-    allResolver(iterable[i], i);
-  }
-  return promise;
-  function allResolver(value, i) {
-    self.resolve(value).then(resolveFromAll, function (error) {
-      if (!called) {
-        called = true;
-        handlers.reject(promise, error);
-      }
-    });
-    function resolveFromAll(outValue) {
-      values[i] = outValue;
-      if (++resolved === len && !called) {
-        called = true;
-        handlers.resolve(promise, values);
-      }
-    }
-  }
-}
-
-Promise.race = race;
-function race(iterable) {
-  var self = this;
-  if (Object.prototype.toString.call(iterable) !== '[object Array]') {
-    return this.reject(new TypeError('must be an array'));
-  }
-
-  var len = iterable.length;
-  var called = false;
-  if (!len) {
-    return this.resolve([]);
-  }
-
-  var i = -1;
-  var promise = new this(INTERNAL);
-
-  while (++i < len) {
-    resolver(iterable[i]);
-  }
-  return promise;
-  function resolver(value) {
-    self.resolve(value).then(function (response) {
-      if (!called) {
-        called = true;
-        handlers.resolve(promise, response);
-      }
-    }, function (error) {
-      if (!called) {
-        called = true;
-        handlers.reject(promise, error);
-      }
-    });
-  }
-}
-
-},{"immediate":2}],4:[function(_dereq_,module,exports){
 'use strict';
 
 /**
@@ -830,165 +173,459 @@ exports.parse = function (str) {
   }
 };
 
+},{}],2:[function(_dereq_,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+var IndexExistsError = (function (_super) {
+    __extends(IndexExistsError, _super);
+    function IndexExistsError(name) {
+        return _super.call(this, "Index " + name + " already exists") || this;
+    }
+    return IndexExistsError;
+}(Error));
+exports.default = IndexExistsError;
+
+},{}],3:[function(_dereq_,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+var IndexNotFoundError = (function (_super) {
+    __extends(IndexNotFoundError, _super);
+    function IndexNotFoundError(name) {
+        var _this = _super.call(this, "Index " + name + " could not be found") || this;
+        _this.status = 404;
+        return _this;
+    }
+    return IndexNotFoundError;
+}(Error));
+exports.default = IndexNotFoundError;
+
+},{}],4:[function(_dereq_,module,exports){
+"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+var SelectorError = (function (_super) {
+    __extends(SelectorError, _super);
+    function SelectorError() {
+        return _super !== null && _super.apply(this, arguments) || this;
+    }
+    return SelectorError;
+}(Error));
+exports.default = SelectorError;
+
 },{}],5:[function(_dereq_,module,exports){
-(function (global){
-'use strict';
+"use strict";
+var __extends = (this && this.__extends) || (function () {
+    var extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+    return function (d, b) {
+        extendStatics(d, b);
+        function __() { this.constructor = d; }
+        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+var webSqlProvider_1 = _dereq_("./webSqlProvider");
+var SqliteProvider = (function (_super) {
+    __extends(SqliteProvider, _super);
+    function SqliteProvider() {
+        return _super !== null && _super.apply(this, arguments) || this;
+    }
+    SqliteProvider.prototype.batchSql = function (batch) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var conn = _this.openConnection();
+            if (typeof conn.sqlBatch === 'function') {
+                conn.sqlBatch(batch, resolve, reject);
+            }
+            else {
+                _super.prototype.batchSql.call(_this, batch).then(resolve).catch(reject);
+            }
+        });
+    };
+    SqliteProvider.prototype.openConnection = function () {
+        return window['sqlitePlugin'].openDatabase({
+            name: this.db,
+            version: 1,
+            description: this.db,
+            size: 5000000
+        });
+    };
+    return SqliteProvider;
+}(webSqlProvider_1.default));
+exports.default = SqliteProvider;
 
-module.exports = global.openDatabase;
+},{"./webSqlProvider":6}],6:[function(_dereq_,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var utils_1 = _dereq_("../utils");
+var WebSqlProvider = (function () {
+    function WebSqlProvider(db) {
+        this.db = db;
+    }
+    WebSqlProvider.prototype.executeSql = function (sql, args) {
+        var _this = this;
+        if (args === void 0) { args = []; }
+        return new Promise(function (resolve, reject) {
+            var conn = _this.openConnection();
+            conn.transaction(function (tx) {
+                return tx.executeSql(sql, args || [], function (tx, res) { return resolve(res); }, function (tx, e) {
+                    reject(e);
+                    return true;
+                });
+            }, function (e) { return reject(e); });
+        });
+    };
+    WebSqlProvider.prototype.batchSql = function (batch) {
+        var _this = this;
+        return new Promise(function (resolve, reject) {
+            var conn = _this.openConnection();
+            conn.transaction(function (tx) {
+                return utils_1.default.eachAsync(batch, function (item, next) {
+                    return tx.executeSql(item[0], item[1], next, function (tx, e) { return next(e); });
+                }, function (e) { return !e ? resolve() : reject(e); });
+            }, reject);
+        });
+    };
+    WebSqlProvider.prototype.openConnection = function () {
+        return window.openDatabase(this.db, '1', '', 5000000);
+    };
+    return WebSqlProvider;
+}());
+exports.default = WebSqlProvider;
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],6:[function(_dereq_,module,exports){
-function query(obj, tableName) {
-    var args = [];
-    var str = parseObject(obj, tableName, args);
-    return {query: str, args: args};
-}
-
-function parseObject(obj, tableName, args) {
-    var result = [];
-    for (var key in obj)
-        if (obj.hasOwnProperty(key)) {
-            var val = obj[key];
-            if (['$or', '$and'].indexOf(key) > -1 && !Array.isArray(val))
-                throw new Error("Use of $and, $or operator requires an array as its parameter.");
-            result.length && result.push(' AND ');
-            switch (key) {
-                case '$or':
-                    var s = val.map(function (item) {
-                        return parseObject(item, tableName, args);
-                    });
-                    if (s.length)
-                        result.push('(' + s.join(' OR ') + ')');
-                    break;
-                case '$and':
-                    s = val.map(function (item) {
-                        return parseObject(item, tableName, args);
-                    });
-                    if (s.length)
-                        result.push('(' + s.join(') AND (') + ')');
-                    break;
-                default:
-                    result.push(parseSingleKeyValue(key, val, tableName, args));
-                    break;
+},{"../utils":9}],7:[function(_dereq_,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var utils_1 = _dereq_("./utils");
+var selectorError_1 = _dereq_("./errors/selectorError");
+var QueryBuilder = (function () {
+    function QueryBuilder() {
+    }
+    QueryBuilder.query = function (selector, table) {
+        var args = [];
+        var str = QueryBuilder.parseObject(selector, table, args);
+        return { where: str, args: args };
+    };
+    QueryBuilder.parseObject = function (obj, tableName, args) {
+        var result = [];
+        for (var key in obj)
+            if (obj.hasOwnProperty(key)) {
+                var val = obj[key];
+                if (['$or', '$and'].indexOf(key) > -1 && !Array.isArray(val))
+                    throw new selectorError_1.default("Use of $and, $or operator requires an array as its parameter.");
+                result.length && result.push(' AND ');
+                switch (key) {
+                    case '$or':
+                        var s = val.map(function (item) { return QueryBuilder.parseObject(item, tableName, args); });
+                        s.length && result.push("(" + s.join(' OR ') + ")");
+                        break;
+                    case '$and':
+                        s = val.map(function (item) { return QueryBuilder.parseObject(item, tableName, args); });
+                        s.length && result.push("(" + s.join(' AND ') + ")");
+                        break;
+                    default:
+                        result.push(QueryBuilder.parseSingleKeyValue(key, val, tableName, args));
+                        break;
+                }
+            }
+        return result.join('');
+    };
+    QueryBuilder.parseSingleKeyValue = function (key, val, tableName, args) {
+        var op = QueryBuilder.operators[key] || (typeof val !== 'object' ? '$eq' : null);
+        if (op) {
+            if (key == '$in' || key == '$nin') {
+                args.concat(val);
+                return op + " [" + Array(val.length).fill('?').join() + "]";
+            }
+            else {
+                args.push(typeof val === 'string' ? val.toLowerCase() : val);
+                return op + " ?";
             }
         }
-    return result.join('');
-}
+        return utils_1.default.wrap(tableName) + "." + utils_1.default.wrap(key) + " " + QueryBuilder.parseObject(val, tableName, args);
+    };
+    return QueryBuilder;
+}());
+QueryBuilder.operators = {
+    '$eq': '=',
+    '$lt': '<',
+    '$gt': '>',
+    '$lte': '<=',
+    '$gte': '>=',
+    '$ne': '!=',
+    '$in': 'IN',
+    '$nin': 'NOT IN',
+    '$like': 'LIKE'
+};
+exports.default = QueryBuilder;
 
-function parseSingleKeyValue(key, val, tableName, args) {
-    var result = '';
-    switch (key) {
-        case '$lt':
-            result = result + ' < ?';
-            args.push(val + '');
-            break;
-        case '$gt':
-            result = result + ' > ?';
-            args.push(val + '');
-            break;
-        case '$lte':
-            result = result + ' <= ?';
-            args.push(val + '');
-            break;
-        case '$gte':
-            result = result + ' >= ?';
-            args.push(val + '');
-            break;
-        case '$ne':
-            result = result + ' != ?';
-            args.push(val + '');
-            break;
-        case '$in':
-            result = result + ' IN [' + val.map(function () {
-                    return '?'
-                }).join() + ']';
-            args.push(val.map(function (v) {
-                return v + '' || null;
-            }).join());
-            break;
-        case '$nin':
-            result = result + ' NOT IN [' + val.map(function () {
-                    return '?'
-                }).join() + ']';
-            args.push(val.map(function (v) {
-                return v + '' || null;
-            }).join());
-            break;
-        case '$like':
-            result = result + ' LIKE ?';
-            args.push(val + '');
-            break;
-        default:
-            result = result + '`' + tableName + '`.`' + key + '`'+ (typeof val === 'object' ? parseObject(val, tableName, args) : ' = ?');
-            typeof val !== 'object' && args.push(val + '');
-            break;
+},{"./errors/selectorError":4,"./utils":9}],8:[function(_dereq_,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var indexNotFoundError_1 = _dereq_("./errors/indexNotFoundError");
+var utils_1 = _dereq_("./utils");
+var indexExistsError_1 = _dereq_("./errors/indexExistsError");
+var sqliteProvider_1 = _dereq_("./providers/sqliteProvider");
+var webSqlProvider_1 = _dereq_("./providers/webSqlProvider");
+var queryBuilder_1 = _dereq_("./queryBuilder");
+var INDEX_TABLE = 'relation-indexes';
+var INDEX_PREFIX = '_ri_';
+var RelationIndex = (function () {
+    function RelationIndex(db, provider) {
+        this.db = db;
+        this.provider = provider;
+        this.init();
     }
-    return result;
+    RelationIndex.prototype.info = function (name) {
+        var index = this.indexes[name];
+        return index ? Promise.resolve(index) : Promise.reject(new indexNotFoundError_1.default(name));
+    };
+    RelationIndex.prototype.create = function (options) {
+        var _this = this;
+        if (this.indexes[options.name])
+            return Promise.reject(new indexExistsError_1.default(options.name));
+        return this.createTable("" + INDEX_PREFIX + options.name, [{ name: 'id', type: 'TEXT' }, { name: 'rev', type: 'TEXT' }].concat(options.fields.map(function (f) {
+            return { name: f.name || (f + ''), type: f.type || 'TEXT' };
+        })))
+            .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(options)]); })
+            .then(function () {
+            _this.indexes[options.name] = options;
+        });
+    };
+    RelationIndex.prototype.build = function (name) {
+        var _this = this;
+        var index = this.indexes[name];
+        if (!index)
+            return Promise.reject(new indexNotFoundError_1.default(name));
+        var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
+        return this.provider.executeSql("DELETE FROM " + tbl)
+            .then(function () { return _this.fillIndexTable(index); });
+    };
+    RelationIndex.prototype.query = function (name, selector, order, include_docs) {
+        if (include_docs === void 0) { include_docs = true; }
+        var index = this.indexes[name];
+        if (!index)
+            return Promise.reject(new indexNotFoundError_1.default(name));
+        var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
+        var q = selector ? queryBuilder_1.default.query(selector, tbl) : null;
+        var orderBy = order && order.length ? order.map(function (o) { return tbl + "." + utils_1.default.wrap(o.field || (o + '')) + " " + (o.dir || 'ASC'); }).join() : '';
+        var sql;
+        if (include_docs)
+            sql = "\n            SELECT\n                `document-store`.id AS id,\n                `by-sequence`.rev AS rev,\n                `by-sequence`.json AS data \n            FROM `document-store` \n                JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \n                JOIN " + tbl + " ON `document-store`.id = " + tbl + ".id \n            WHERE \n                " + (q.where ? q.where + ' AND ' : '') + " \n                `by-sequence`.deleted = 0 \n            ORDER BY " + (orderBy ? orderBy + ',' : '') + " `document-store`.id ASC";
+        else {
+            var flds = index.fields.map(function (f) { return tbl + utils_1.default.wrap(f.name); });
+            sql = "SELECT " + flds.join() + " FROM " + tbl + " WHERE " + (q.where ? q.where + ' AND ' : '') + " 1 = 1 " + (orderBy ? 'ORDER BY ' + orderBy + ',' : '');
+        }
+        return this.provider.executeSql(sql, q.args)
+            .then(function (res) {
+            var docs = [];
+            for (var i = 0; i < res.rows.length; i++) {
+                var row = res.rows.item(i);
+                docs.push(utils_1.default.unstringifyDoc(row.data, row.id, row.rev));
+            }
+            return docs;
+        });
+    };
+    RelationIndex.prototype.remove = function (name) {
+        var _this = this;
+        var index = this.indexes[name];
+        if (!index)
+            return Promise.reject(new indexNotFoundError_1.default(name));
+        var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
+        return this.provider.executeSql("DELETE FROM " + utils_1.default.wrap(INDEX_TABLE) + " WHERE index_name = ?", [name])
+            .then(function () { return _this.provider.executeSql("DROP TABLE IF EXISTS " + tbl); });
+    };
+    RelationIndex.prototype.update = function (name) {
+        var _this = this;
+        var index = this.indexes[name];
+        if (!index)
+            return Promise.reject(new indexNotFoundError_1.default(name));
+        var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
+        var docTypeLen = index.doc_type.length;
+        var fields = ['_id', '_rev'].concat(index.fields.map(function (f) { return f.name; }));
+        var p = Array(fields.length).fill('?');
+        var sql = "\n        SELECT \n            `document-store`.id AS id, \n            `by-sequence`.rev AS rev, \n            `by-sequence`.json AS data \n        FROM `document-store` \n            JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq  \n        WHERE \n            NOT EXISTS(SELECT 1 FROM " + tbl + " WHERE `document-store`.id = " + tbl + ".id )  \n            AND \n            substr(`document-store`.id, 1, " + docTypeLen + ") = ?  \n            AND \n            `by-sequence`.deleted = 0";
+        this.provider.executeSql(sql, [index.doc_type.length])
+            .then(function (res) {
+            var docs = [];
+            for (var i = 0; i < res.rows.length; i++) {
+                var row = res.rows.item(i);
+                docs.push(utils_1.default.unstringifyDoc(row.data, row.id, row.rev));
+            }
+            if (!docs.length)
+                return;
+            var sqlStatements = docs.map(function (r) {
+                var args = fields.map(function (f) {
+                    var v = utils_1.default.resolve(r.doc, f);
+                    return typeof v === 'string' ? v.toLowerCase() : v;
+                });
+                return ["INSERT INTO " + tbl + " VALUES (" + p + ")", args];
+            });
+            return _this.provider.batchSql(sqlStatements);
+        });
+    };
+    RelationIndex.prototype.init = function () {
+        var _this = this;
+        this.createTable(INDEX_TABLE, [
+            { name: 'index_name', type: 'TEXT' },
+            { name: 'doc_type', type: 'TEXT' },
+            { name: 'json', type: 'TEXT' }
+        ])
+            .then(function () { return _this.getIndexes(); })
+            .catch(function (e) {
+            throw e;
+        });
+    };
+    RelationIndex.prototype.getIndexes = function () {
+        var _this = this;
+        return this.provider.executeSql("SELECT * FROM " + utils_1.default.wrap(INDEX_TABLE))
+            .then(function (rs) {
+            for (var i = 0; i < rs.rows.length; i++) {
+                var index = rs.rows.item(i);
+                _this.indexes[index.name] = index;
+            }
+        });
+    };
+    RelationIndex.prototype.createTable = function (name, fields) {
+        return this.provider.executeSql("CREATE TABLE IF NOT EXISTS " + utils_1.default.wrap(name) + " (" + utils_1.default.fieldsToSql(fields) + ")")
+            .then(function () {
+        });
+    };
+    RelationIndex.prototype.fillIndexTable = function (index, start) {
+        var _this = this;
+        if (start === void 0) { start = 0; }
+        var limit = 1000;
+        var tbl = utils_1.default.wrap("" + INDEX_PREFIX + index.name);
+        var fields = ['_id', '_rev'].concat(index.fields.map(function (f) { return f.name; }));
+        var p = Array(fields.length).fill('?');
+        return this.db.allDocs({
+            startkey: index.doc_type,
+            endkey: index.doc_type + "\uFFFF",
+            include_docs: true,
+            skip: start,
+            limit: limit
+        })
+            .then(function (res) {
+            var len = res.rows.length;
+            if (!len)
+                return;
+            var sqlStatements = res.rows.map(function (r) {
+                var args = fields.map(function (f) {
+                    var v = utils_1.default.resolve(r.doc, f);
+                    return typeof v === 'string' ? v.toLowerCase() : v;
+                });
+                return ["INSERT INTO " + tbl + " VALUES (" + p + ")", args];
+            });
+            return _this.provider.batchSql(sqlStatements)
+                .then(function () {
+                if (len === limit)
+                    return _this.fillIndexTable(index, start + limit);
+            });
+        });
+    };
+    return RelationIndex;
+}());
+exports.RelationIndex = RelationIndex;
+/* istanbul ignore next */
+if (typeof window !== 'undefined' && window['PouchDB']) {
+    window['PouchDB'].plugin({
+        initRelationIndex: function () {
+            var db = this;
+            var provider;
+            if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
+                provider = new sqliteProvider_1.default(db.name);
+            else if (db.adapter === 'websql')
+                provider = new webSqlProvider_1.default(db.name);
+            else
+                throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
+            this.relIndex = new RelationIndex(db, provider);
+        }
+    });
 }
 
-exports.query = query;
-},{}],7:[function(_dereq_,module,exports){
-'use strict';
-
-var vuvuzela = _dereq_('vuvuzela');
-
-var getFields = exports.getFields = function (fields) {
-    return fields.map(function (f) {
-        var r = typeof f === 'string' ? {name: f, type: 'TEXT'} : f;
-        r.type = (r.type || 'TEXT').toUpperCase();
-        return r;
-    });
-};
-
-exports.wrapFields = function (fields, tableName) {
-    var wt = wrapTableName(tableName);
-    return getFields(fields).map(function (f) {
-        return wt + '.`' + f.name + '`';
-    })
-};
-
-exports.wrapField = function (field, tableName) {
-    return wrapTableName(tableName) + '.`' + field + '`';
-};
-
-var wrapTableName = exports.wrapTableName = function (tableName) {
-    return tableName ? '`' + tableName + '`' : '';
-};
-
-exports.resolve = function (obj, path, defValue) {
-    var rv = path.split(".").reduce(function (o, p) {
-        return o && o[p];
-    }, obj);
-    return rv || defValue;
-};
-
-exports.eachAsync = function (data, iterator, callback) {
-    var index = 0;
-    var len = data.length;
-    var next = function (e) {
-        if (!e && index < len) {
-            iterator(data[index], next);
-            index++;
-        } else {
-            typeof callback === 'function' && callback(e);
+},{"./errors/indexExistsError":2,"./errors/indexNotFoundError":3,"./providers/sqliteProvider":5,"./providers/webSqlProvider":6,"./queryBuilder":7,"./utils":9}],9:[function(_dereq_,module,exports){
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var vuvuzela_1 = _dereq_("vuvuzela");
+var Utils = (function () {
+    function Utils() {
+    }
+    Utils.wrap = function (op) {
+        if (Array.isArray(op)) {
+            return op.map(function (f) { return '`' + f + '`'; }).join();
+        }
+        else {
+            return "`" + op + "`";
         }
     };
-    next();
-};
+    Utils.fieldsToSql = function (fields) {
+        return fields.map(function (f) { return Utils.wrap(f.name) + " " + f.type; }).join();
+    };
+    Utils.resolve = function (obj, path, defValue) {
+        if (defValue === void 0) { defValue = null; }
+        return path.split(".").reduce(function (o, p) { return o && o[p]; }, obj) || defValue;
+    };
+    Utils.eachAsync = function (data, iterator, callback) {
+        var index = 0;
+        var len = data.length;
+        var next = function (e) {
+            if (!e && index < len) {
+                iterator(data[index], next);
+                index++;
+            }
+            else {
+                typeof callback === 'function' && callback(e);
+            }
+        };
+        next();
+    };
+    Utils.unstringifyDoc = function (doc, id, rev) {
+        doc = Utils.safeJsonParse(doc);
+        doc._id = id;
+        doc._rev = rev;
+        return doc;
+    };
+    Utils.safeJsonParse = function (str) {
+        try {
+            return JSON.parse(str);
+        }
+        catch (e) {
+            /* istanbul ignore next */
+            return vuvuzela_1.default.parse(str);
+        }
+    };
+    return Utils;
+}());
+exports.default = Utils;
 
-exports.unstringifyDoc = function (doc, id, rev) {
-    doc = safeJsonParse(doc);
-    doc._id = id;
-    doc._rev = rev;
-    return doc;
-};
-
-function safeJsonParse(str) {
-    try {
-        return JSON.parse(str);
-    } catch (e) {
-        /* istanbul ignore next */
-        return vuvuzela.parse(str);
-    }
-}
-},{"vuvuzela":4}]},{},[1]);
+},{"vuvuzela":1}]},{},[8]);
