@@ -17,8 +17,7 @@
   "scripts": {
     "build": "tsc && npm run browserify && npm run min",
     "browserify": "browserify src/relationIndex.js | derequire > dist/pouch-relation-index.js",
-    "min": "uglifyjs dist/pouch-relation-index.js -mc > dist/pouch-relation-index.min.js",
-    "postinstall": "npm run build"
+    "min": "uglifyjs dist/pouch-relation-index.js -mc > dist/pouch-relation-index.min.js"
   },
   "dependencies": {
     "pouchdb": "^6.2.0",
