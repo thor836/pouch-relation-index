@@ -561,6 +561,8 @@ if (typeof window !== 'undefined' && window['PouchDB']) {
     window['PouchDB'].plugin({
         initRelationIndex: function () {
             var db = this;
+            if (db.relIndex)
+                return;
             var provider;
             if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
                 provider = new sqliteProvider_1.default(db.name);
@@ -568,7 +570,7 @@ if (typeof window !== 'undefined' && window['PouchDB']) {
                 provider = new webSqlProvider_1.default(db.name);
             else
                 throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
-            this.relIndex = new RelationIndex(db, provider);
+            db.relIndex = new RelationIndex(db, provider);
         }
     });
 }
