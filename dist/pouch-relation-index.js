@@ -588,6 +588,7 @@ var RelationIndex = (function () {
     };
     return RelationIndex;
 }());
+exports.RelationIndex = RelationIndex;
 function initRelationIndex(openDatabase) {
     var db = this;
     return RelationIndex.instance(db, openDatabase);

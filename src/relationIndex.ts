@@ -11,7 +11,7 @@ import {IndexInfo, Field, Order} from "./types";
 const INDEX_TABLE = 'relation-indexes';
 const INDEX_PREFIX = '_ri_';
 
-class RelationIndex {
+export class RelationIndex {
 
     private _init = false;
     private readonly indexes: { [key: string]: IndexInfo } = {};
