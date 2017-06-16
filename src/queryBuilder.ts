@@ -48,7 +48,7 @@ export default class QueryBuilder {
     }
 
     private static parseSingleKeyValue(key, val, tableName, args) {
-        let op = QueryBuilder.operators[key] || (typeof val !== 'object' ? '$eq' : null);
+        let op = QueryBuilder.operators[key] || (typeof val !== 'object' ? QueryBuilder.operators['$eq'] : null);
         if (op) {
             if (key == '$in' || key == '$nin') {
                 args.concat(val);

@@ -361,7 +361,7 @@ var QueryBuilder = (function () {
         return result.join('');
     };
     QueryBuilder.parseSingleKeyValue = function (key, val, tableName, args) {
-        var op = QueryBuilder.operators[key] || (typeof val !== 'object' ? '$eq' : null);
+        var op = QueryBuilder.operators[key] || (typeof val !== 'object' ? QueryBuilder.operators['$eq'] : null);
         if (op) {
             if (key == '$in' || key == '$nin') {
                 args.concat(val);
