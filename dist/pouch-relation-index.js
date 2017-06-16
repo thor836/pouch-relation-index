@@ -404,6 +404,7 @@ var RelationIndex = (function () {
     function RelationIndex(db, provider) {
         this.db = db;
         this.provider = provider;
+        this.indexes = {};
         this.init();
     }
     RelationIndex.prototype.info = function (name) {

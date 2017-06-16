@@ -6,7 +6,7 @@ import { IndexInfo, Order } from "./types";
 export declare class RelationIndex {
     private readonly db;
     private readonly provider;
-    private indexes;
+    private readonly indexes;
     constructor(db: PouchDB.Database<any>, provider: Provider);
     info(name: string): Promise<never>;
     create(options: IndexInfo): Promise<never>;

@@ -13,7 +13,7 @@ const INDEX_PREFIX = '_ri_';
 
 export class RelationIndex {
 
-    private indexes: { [key: string]: IndexInfo };
+    private readonly indexes: { [key: string]: IndexInfo } = {};
 
     constructor(private readonly db: PouchDB.Database<any>,
                 private readonly provider: Provider) {
