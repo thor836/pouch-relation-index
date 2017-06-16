@@ -404,8 +404,8 @@ var RelationIndex = (function () {
     function RelationIndex(db, provider) {
         this.db = db;
         this.provider = provider;
+        this._init = false;
         this.indexes = {};
-        this.init();
     }
     RelationIndex.prototype.info = function (name) {
         var index = this.indexes[name];
@@ -418,7 +418,7 @@ var RelationIndex = (function () {
         return this.createTable("" + INDEX_PREFIX + options.name, [{ name: 'id', type: 'TEXT' }, { name: 'rev', type: 'TEXT' }].concat(options.fields.map(function (f) {
             return { name: f.name || (f + ''), type: f.type || 'TEXT' };
         })))
-            .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(options)]); })
+            .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(options.fields)]); })
             .then(function () {
             _this.indexes[options.name] = options;
         });
@@ -497,23 +497,27 @@ var RelationIndex = (function () {
     };
     RelationIndex.prototype.init = function () {
         var _this = this;
-        this.createTable(INDEX_TABLE, [
+        if (this._init)
+            return Promise.resolve(null);
+        return this.createTable(INDEX_TABLE, [
             { name: 'index_name', type: 'TEXT' },
             { name: 'doc_type', type: 'TEXT' },
             { name: 'json', type: 'TEXT' }
         ])
             .then(function () { return _this.getIndexes(); })
-            .catch(function (e) {
-            throw e;
-        });
+            .then(function () { _this._init = true; });
     };
     RelationIndex.prototype.getIndexes = function () {
         var _this = this;
         return this.provider.executeSql("SELECT * FROM " + utils_1.default.wrap(INDEX_TABLE))
             .then(function (rs) {
             for (var i = 0; i < rs.rows.length; i++) {
-                var index = rs.rows.item(i);
-                _this.indexes[index.name] = index;
+                var row = rs.rows.item(i);
+                _this.indexes[row.index_name] = {
+                    name: row.index_name,
+                    doc_type: row.doc_type,
+                    fields: JSON.parse(row.json)
+                };
             }
         });
     };
@@ -572,6 +576,7 @@ if (typeof window !== 'undefined' && window['PouchDB']) {
             else
                 throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
             db.relIndex = new RelationIndex(db, provider);
+            return db.relIndex.init();
         }
     });
 }

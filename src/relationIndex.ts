@@ -13,11 +13,11 @@ const INDEX_PREFIX = '_ri_';
 
 export class RelationIndex {
 
+    private _init = false;
     private readonly indexes: { [key: string]: IndexInfo } = {};
 
     constructor(private readonly db: PouchDB.Database<any>,
                 private readonly provider: Provider) {
-        this.init();
     }
 
     info(name: string) {
@@ -33,7 +33,7 @@ export class RelationIndex {
             [{name: 'id', type: 'TEXT'}, {name: 'rev', type: 'TEXT'}].concat(options.fields.map(f => {
                 return {name: f.name || (f + ''), type: f.type || 'TEXT'};
             })))
-            .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(options)]))
+            .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(options.fields)]))
             .then(() => {
                 this.indexes[options.name] = options;
             });
@@ -141,24 +141,29 @@ export class RelationIndex {
             });
     }
 
-    private init() {
-        this.createTable(INDEX_TABLE, [
+    init() {
+        if (this._init)
+            return Promise.resolve(null);
+
+        return this.createTable(INDEX_TABLE, [
                 {name: 'index_name', type: 'TEXT'},
                 {name: 'doc_type', type: 'TEXT'},
                 {name: 'json', type: 'TEXT'}
             ])
             .then(() => this.getIndexes())
-            .catch(e => {
-                throw e
-            });
+            .then(() => {this._init = true});
     }
 
     private getIndexes() {
         return this.provider.executeSql(`SELECT * FROM ${Utils.wrap(INDEX_TABLE)}`)
             .then(rs => {
                 for (let i = 0; i < rs.rows.length; i++) {
-                    let index = rs.rows.item(i);
-                    this.indexes[index.name] = index;
+                    let row = rs.rows.item(i);
+                    this.indexes[row.index_name] = {
+                        name: row.index_name,
+                        doc_type: row.doc_type,
+                        fields: JSON.parse(row.json)
+                    };
                 }
             });
     }
@@ -220,6 +225,7 @@ if (typeof window !== 'undefined' && window['PouchDB']) {
                 throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
 
             db.relIndex = new RelationIndex(db, provider);
+            return db.relIndex.init();
         }
     } as any);
 }
