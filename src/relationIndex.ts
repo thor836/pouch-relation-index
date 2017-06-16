@@ -30,7 +30,7 @@ export class RelationIndex {
             return Promise.reject(new IndexExistsError(options.name));
 
         return this.createTable(`${INDEX_PREFIX}${options.name}`,
-            [{name: 'id', type: 'TEXT'}, {name: 'rev', type: 'TEXT'}].concat(options.fields.map(f => {
+            [{name: 'id', type: 'TEXT', primary_key: true}, {name: 'rev', type: 'TEXT'}].concat(options.fields.map(f => {
                 return {name: f.name || (f + ''), type: f.type || 'TEXT'};
             })))
             .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(options.fields)]))
@@ -55,7 +55,7 @@ export class RelationIndex {
             return Promise.reject(new IndexNotFoundError(name));
 
         let tbl = Utils.wrap(`${INDEX_PREFIX}${name}`);
-        let q = selector ? QueryBuilder.query(selector, tbl) : null;
+        let q = selector ? QueryBuilder.query(selector, `${INDEX_PREFIX}${name}`) : null;
         let orderBy = order && order.length ? order.map(o => `${tbl}.${Utils.wrap(o.field || (o + ''))} ${o.dir || 'ASC'}`).join() : '';
         let sql;
         if (include_docs)

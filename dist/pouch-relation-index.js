@@ -418,7 +418,7 @@ var RelationIndex = (function () {
         var _this = this;
         if (this.indexes[options.name])
             return Promise.reject(new indexExistsError_1.default(options.name));
-        return this.createTable("" + INDEX_PREFIX + options.name, [{ name: 'id', type: 'TEXT' }, { name: 'rev', type: 'TEXT' }].concat(options.fields.map(function (f) {
+        return this.createTable("" + INDEX_PREFIX + options.name, [{ name: 'id', type: 'TEXT', primary_key: true }, { name: 'rev', type: 'TEXT' }].concat(options.fields.map(function (f) {
             return { name: f.name || (f + ''), type: f.type || 'TEXT' };
         })))
             .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(options.fields)]); })
@@ -441,7 +441,7 @@ var RelationIndex = (function () {
         if (!index)
             return Promise.reject(new indexNotFoundError_1.default(name));
         var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
-        var q = selector ? queryBuilder_1.default.query(selector, tbl) : null;
+        var q = selector ? queryBuilder_1.default.query(selector, "" + INDEX_PREFIX + name) : null;
         var orderBy = order && order.length ? order.map(function (o) { return tbl + "." + utils_1.default.wrap(o.field || (o + '')) + " " + (o.dir || 'ASC'); }).join() : '';
         var sql;
         if (include_docs)
@@ -600,7 +600,7 @@ var Utils = (function () {
         }
     };
     Utils.fieldsToSql = function (fields) {
-        return fields.map(function (f) { return Utils.wrap(f.name) + " " + f.type; }).join();
+        return fields.map(function (f) { return Utils.wrap(f.name) + " " + f.type + " " + (f.primary_key ? 'NOT NULL PRIMARY KEY' : ''); }).join();
     };
     Utils.resolve = function (obj, path, defValue) {
         if (defValue === void 0) { defValue = null; }
