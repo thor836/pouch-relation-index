@@ -120,7 +120,7 @@ export class RelationIndex {
             AND 
             \`by-sequence\`.deleted = 0`;
 
-        this.provider.executeSql(sql, [index.doc_type.length])
+        this.provider.executeSql(sql, [index.doc_type])
             .then(res => {
                 let docs = [];
                 for (let i = 0; i < res.rows.length; i++) {
