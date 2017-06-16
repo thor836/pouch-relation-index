@@ -363,13 +363,16 @@ var QueryBuilder = (function () {
     QueryBuilder.parseSingleKeyValue = function (key, val, tableName, args) {
         var op = QueryBuilder.operators[key] || (typeof val !== 'object' ? QueryBuilder.operators['$eq'] : null);
         if (op) {
+            var res = utils_1.default.wrap(tableName) + "." + utils_1.default.wrap(key) + " " + op;
             if (key == '$in' || key == '$nin') {
+                if (!Array.isArray(val))
+                    throw new selectorError_1.default("Use of $in, $nin operator requires an array as its parameter.");
                 args.concat(val);
-                return op + " [" + Array(val.length).fill('?').join() + "]";
+                return res + " [" + Array(val.length).fill('?').join() + "]";
             }
             else {
                 args.push(typeof val === 'string' ? val.toLowerCase() : val);
-                return op + " ?";
+                return res + " ?";
             }
         }
         return utils_1.default.wrap(tableName) + "." + utils_1.default.wrap(key) + " " + QueryBuilder.parseObject(val, tableName, args);
