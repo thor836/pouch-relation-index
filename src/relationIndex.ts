@@ -11,7 +11,7 @@ import {IndexInfo, Field, Order} from "./types";
 const INDEX_TABLE = 'relation-indexes';
 const INDEX_PREFIX = '_ri_';
 
-export class RelationIndex {
+class RelationIndex {
 
     private _init = false;
     private readonly indexes: { [key: string]: IndexInfo } = {};
@@ -28,14 +28,16 @@ export class RelationIndex {
     create(options: IndexInfo) {
         if (this.indexes[options.name])
             return Promise.reject(new IndexExistsError(options.name));
-
-        return this.createTable(`${INDEX_PREFIX}${options.name}`,
-            [{name: 'id', type: 'TEXT', primary_key: true}, {name: 'rev', type: 'TEXT'}].concat(options.fields.map(f => {
-                return {name: f.name || (f + ''), type: f.type || 'TEXT'};
-            })))
-            .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(options.fields)]))
+        let fields = options.fields.map(f => {
+            return {name: f.name || (f + ''), type: f.type || 'TEXT'};
+        });
+        let internalFields = [{name: 'id', type: 'TEXT', primary_key: true},
+            {name: 'rev', type: 'TEXT'}]
+            .concat(fields);
+        return this.createTable(`${INDEX_PREFIX}${options.name}`, internalFields)
+            .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(fields)]))
             .then(() => {
-                this.indexes[options.name] = options;
+                this.indexes[options.name] = Object.assign({}, options, {fields});
             });
     }
 
@@ -94,7 +96,10 @@ export class RelationIndex {
 
         let tbl = Utils.wrap(`${INDEX_PREFIX}${name}`);
         return this.provider.executeSql(`DELETE FROM ${Utils.wrap(INDEX_TABLE)} WHERE index_name = ?`, [name])
-            .then(() => this.provider.executeSql(`DROP TABLE IF EXISTS ${tbl}`));
+            .then(() => this.provider.executeSql(`DROP TABLE IF EXISTS ${tbl}`))
+            .then(() => {
+                delete this.indexes[name]
+            });
     }
 
     update(name: string) {
@@ -151,7 +156,9 @@ export class RelationIndex {
                 {name: 'json', type: 'TEXT'}
             ])
             .then(() => this.getIndexes())
-            .then(() => {this._init = true});
+            .then(() => {
+                this._init = true
+            });
     }
 
     private getIndexes() {
@@ -206,26 +213,32 @@ export class RelationIndex {
                     })
             });
     }
+
+    static instance(db, openDatabase?: (name: string) => any) {
+        if (db.relIndex)
+            return Promise.resolve(null);
+
+        let provider: Provider;
+        if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
+            provider = new SqliteProvider(db.prefix + db.name);
+        else if (db.adapter === 'websql')
+            provider = new WebSqlProvider(db.prefix + db.name, openDatabase);
+        else
+            throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
+
+        db.relIndex = new RelationIndex(db, provider);
+        return db.relIndex.init();
+    }
+}
+
+export function initRelationIndex(openDatabase?: (name: string) => any) {
+    let db = this;
+    return RelationIndex.instance(db, openDatabase);
 }
 
 /* istanbul ignore next */
-if (typeof window !== 'undefined' && window['PouchDB']) {
+if (typeof window !== 'undefined' && !!window['PouchDB']) {
     window['PouchDB'].plugin({
-        initRelationIndex: function () {
-            let db = this;
-            if (db.relIndex)
-                return;
-
-            let provider: Provider;
-            if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
-                provider = new SqliteProvider(db.prefix + db.name);
-            else if (db.adapter === 'websql')
-                provider = new WebSqlProvider(db.prefix + db.name);
-            else
-                throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
-
-            db.relIndex = new RelationIndex(db, provider);
-            return db.relIndex.init();
-        }
+        initRelationIndex: initRelationIndex
     } as any);
 }

@@ -1,4 +1,4 @@
-(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.pouchRelationIndex = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 'use strict';
 
 /**
@@ -173,7 +173,7 @@ exports.parse = function (str) {
   }
 };
 
-},{}],2:[function(_dereq_,module,exports){
+},{}],2:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -195,7 +195,7 @@ var IndexExistsError = (function (_super) {
 }(Error));
 exports.default = IndexExistsError;
 
-},{}],3:[function(_dereq_,module,exports){
+},{}],3:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -219,7 +219,7 @@ var IndexNotFoundError = (function (_super) {
 }(Error));
 exports.default = IndexNotFoundError;
 
-},{}],4:[function(_dereq_,module,exports){
+},{}],4:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -241,7 +241,7 @@ var SelectorError = (function (_super) {
 }(Error));
 exports.default = SelectorError;
 
-},{}],5:[function(_dereq_,module,exports){
+},{}],5:[function(require,module,exports){
 "use strict";
 var __extends = (this && this.__extends) || (function () {
     var extendStatics = Object.setPrototypeOf ||
@@ -254,7 +254,7 @@ var __extends = (this && this.__extends) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-var webSqlProvider_1 = _dereq_("./webSqlProvider");
+var webSqlProvider_1 = require("./webSqlProvider");
 var SqliteProvider = (function (_super) {
     __extends(SqliteProvider, _super);
     function SqliteProvider() {
@@ -284,13 +284,14 @@ var SqliteProvider = (function (_super) {
 }(webSqlProvider_1.default));
 exports.default = SqliteProvider;
 
-},{"./webSqlProvider":6}],6:[function(_dereq_,module,exports){
+},{"./webSqlProvider":6}],6:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var utils_1 = _dereq_("../utils");
+var utils_1 = require("../utils");
 var WebSqlProvider = (function () {
-    function WebSqlProvider(db) {
+    function WebSqlProvider(db, openDatabase) {
         this.db = db;
+        this.openDatabase = openDatabase;
     }
     WebSqlProvider.prototype.executeSql = function (sql, args) {
         var _this = this;
@@ -311,23 +312,25 @@ var WebSqlProvider = (function () {
             var conn = _this.openConnection();
             conn.transaction(function (tx) {
                 return utils_1.default.eachAsync(batch, function (item, next) {
-                    return tx.executeSql(item[0], item[1], next, function (tx, e) { return next(e); });
+                    return tx.executeSql(item[0], item[1], function () { return next(); }, function (tx, e) { return next(e); });
                 }, function (e) { return !e ? resolve() : reject(e); });
             }, reject);
         });
     };
     WebSqlProvider.prototype.openConnection = function () {
-        return window.openDatabase(this.db, '1', '', 5000000);
+        return this.openDatabase ?
+            this.openDatabase(this.db) :
+            window['openDatabase'](this.db, '1', '', 5000000);
     };
     return WebSqlProvider;
 }());
 exports.default = WebSqlProvider;
 
-},{"../utils":9}],7:[function(_dereq_,module,exports){
+},{"../utils":9}],7:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var utils_1 = _dereq_("./utils");
-var selectorError_1 = _dereq_("./errors/selectorError");
+var utils_1 = require("./utils");
+var selectorError_1 = require("./errors/selectorError");
 var QueryBuilder = (function () {
     function QueryBuilder() {
     }
@@ -392,15 +395,15 @@ QueryBuilder.operators = {
 };
 exports.default = QueryBuilder;
 
-},{"./errors/selectorError":4,"./utils":9}],8:[function(_dereq_,module,exports){
+},{"./errors/selectorError":4,"./utils":9}],8:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var indexNotFoundError_1 = _dereq_("./errors/indexNotFoundError");
-var utils_1 = _dereq_("./utils");
-var indexExistsError_1 = _dereq_("./errors/indexExistsError");
-var sqliteProvider_1 = _dereq_("./providers/sqliteProvider");
-var webSqlProvider_1 = _dereq_("./providers/webSqlProvider");
-var queryBuilder_1 = _dereq_("./queryBuilder");
+var indexNotFoundError_1 = require("./errors/indexNotFoundError");
+var utils_1 = require("./utils");
+var indexExistsError_1 = require("./errors/indexExistsError");
+var sqliteProvider_1 = require("./providers/sqliteProvider");
+var webSqlProvider_1 = require("./providers/webSqlProvider");
+var queryBuilder_1 = require("./queryBuilder");
 var INDEX_TABLE = 'relation-indexes';
 var INDEX_PREFIX = '_ri_';
 var RelationIndex = (function () {
@@ -418,12 +421,16 @@ var RelationIndex = (function () {
         var _this = this;
         if (this.indexes[options.name])
             return Promise.reject(new indexExistsError_1.default(options.name));
-        return this.createTable("" + INDEX_PREFIX + options.name, [{ name: 'id', type: 'TEXT', primary_key: true }, { name: 'rev', type: 'TEXT' }].concat(options.fields.map(function (f) {
+        var fields = options.fields.map(function (f) {
             return { name: f.name || (f + ''), type: f.type || 'TEXT' };
-        })))
-            .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(options.fields)]); })
+        });
+        var internalFields = [{ name: 'id', type: 'TEXT', primary_key: true },
+            { name: 'rev', type: 'TEXT' }]
+            .concat(fields);
+        return this.createTable("" + INDEX_PREFIX + options.name, internalFields)
+            .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(fields)]); })
             .then(function () {
-            _this.indexes[options.name] = options;
+            _this.indexes[options.name] = Object.assign({}, options, { fields: fields });
         });
     };
     RelationIndex.prototype.build = function (name) {
@@ -467,7 +474,10 @@ var RelationIndex = (function () {
             return Promise.reject(new indexNotFoundError_1.default(name));
         var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
         return this.provider.executeSql("DELETE FROM " + utils_1.default.wrap(INDEX_TABLE) + " WHERE index_name = ?", [name])
-            .then(function () { return _this.provider.executeSql("DROP TABLE IF EXISTS " + tbl); });
+            .then(function () { return _this.provider.executeSql("DROP TABLE IF EXISTS " + tbl); })
+            .then(function () {
+            delete _this.indexes[name];
+        });
     };
     RelationIndex.prototype.update = function (name) {
         var _this = this;
@@ -508,7 +518,9 @@ var RelationIndex = (function () {
             { name: 'json', type: 'TEXT' }
         ])
             .then(function () { return _this.getIndexes(); })
-            .then(function () { _this._init = true; });
+            .then(function () {
+            _this._init = true;
+        });
     };
     RelationIndex.prototype.getIndexes = function () {
         var _this = this;
@@ -561,33 +573,37 @@ var RelationIndex = (function () {
             });
         });
     };
+    RelationIndex.instance = function (db, openDatabase) {
+        if (db.relIndex)
+            return Promise.resolve(null);
+        var provider;
+        if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
+            provider = new sqliteProvider_1.default(db.prefix + db.name);
+        else if (db.adapter === 'websql')
+            provider = new webSqlProvider_1.default(db.prefix + db.name, openDatabase);
+        else
+            throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
+        db.relIndex = new RelationIndex(db, provider);
+        return db.relIndex.init();
+    };
     return RelationIndex;
 }());
-exports.RelationIndex = RelationIndex;
+function initRelationIndex(openDatabase) {
+    var db = this;
+    return RelationIndex.instance(db, openDatabase);
+}
+exports.initRelationIndex = initRelationIndex;
 /* istanbul ignore next */
-if (typeof window !== 'undefined' && window['PouchDB']) {
+if (typeof window !== 'undefined' && !!window['PouchDB']) {
     window['PouchDB'].plugin({
-        initRelationIndex: function () {
-            var db = this;
-            if (db.relIndex)
-                return;
-            var provider;
-            if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
-                provider = new sqliteProvider_1.default(db.prefix + db.name);
-            else if (db.adapter === 'websql')
-                provider = new webSqlProvider_1.default(db.prefix + db.name);
-            else
-                throw new Error('Relation Index plugin supports only websql or cordova-sqlite adapters');
-            db.relIndex = new RelationIndex(db, provider);
-            return db.relIndex.init();
-        }
+        initRelationIndex: initRelationIndex
     });
 }
 
-},{"./errors/indexExistsError":2,"./errors/indexNotFoundError":3,"./providers/sqliteProvider":5,"./providers/webSqlProvider":6,"./queryBuilder":7,"./utils":9}],9:[function(_dereq_,module,exports){
+},{"./errors/indexExistsError":2,"./errors/indexNotFoundError":3,"./providers/sqliteProvider":5,"./providers/webSqlProvider":6,"./queryBuilder":7,"./utils":9}],9:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-var vuvuzela_1 = _dereq_("vuvuzela");
+var vuvuzela_1 = require("vuvuzela");
 var Utils = (function () {
     function Utils() {
     }
@@ -639,4 +655,5 @@ var Utils = (function () {
 }());
 exports.default = Utils;
 
-},{"vuvuzela":1}]},{},[8]);
+},{"vuvuzela":1}]},{},[8])(8)
+});

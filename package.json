@@ -16,16 +16,11 @@
   "license": "",
   "scripts": {
     "build": "tsc && npm run browserify && npm run min",
-    "browserify": "browserify src/relationIndex.js | derequire > dist/pouch-relation-index.js",
+    "browserify": "browserify src/relationIndex.js --standalone pouch-relation-index > dist/pouch-relation-index.js",
     "min": "uglifyjs dist/pouch-relation-index.js -mc > dist/pouch-relation-index.min.js"
   },
   "dependencies": {
-    "pouchdb": "^6.2.0",
-    "pouchdb-adapter-websql": "^6.2.0",
-    "pouchdb-browser": "^6.2.0",
-    "pouchdb-utils": "6.2.0",
-    "vuvuzela": "^1.0.3",
-    "websql": "^0.4.4"
+    "vuvuzela": "^1.0.3"
   },
   "devDependencies": {
     "@types/pouchdb": "^6.1.0",
@@ -42,6 +37,9 @@
     "mocha": "^3.3.0",
     "phantomjs": "^2.1.7",
     "pouchdb": "^6.2.0",
+    "pouchdb-adapter-websql": "^6.2.0",
+    "pouchdb-browser": "^6.2.0",
+    "pouchdb-utils": "6.2.0",
     "request": "^2.36.0",
     "sauce-connect-launcher": "^1.2.2",
     "selenium-standalone": "^6.4.1",
