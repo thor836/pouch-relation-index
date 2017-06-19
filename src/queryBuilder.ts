@@ -50,16 +50,16 @@ export default class QueryBuilder {
     private static parseSingleKeyValue(key, val, tableName, args) {
         let op = QueryBuilder.operators[key] || (typeof val !== 'object' ? QueryBuilder.operators['$eq'] : null);
         if (op) {
-            let res = `${Utils.wrap(tableName)}.${Utils.wrap(key)} ${op}`;
             if (key == '$in' || key == '$nin') {
                 if (!Array.isArray(val))
                     throw new SelectorError("Use of $in, $nin operator requires an array as its parameter.");
 
                 args.concat(val);
-                return `${res} [${Array(val.length).fill('?').join()}]`;
+                return `${op} [${Array(val.length).fill('?').join()}]`;
             } else {
+                QueryBuilder.operators[key] == null && (op = `${Utils.wrap(tableName)}.${Utils.wrap(key)} ${op}`);
                 args.push(typeof val === 'string' ? val.toLowerCase() : val);
-                return `${res} ?`;
+                return `${op} ?`;
             }
         }
         return `${Utils.wrap(tableName)}.${Utils.wrap(key)} ${QueryBuilder.parseObject(val, tableName, args)}`;
