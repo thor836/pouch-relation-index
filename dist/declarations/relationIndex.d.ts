@@ -14,7 +14,7 @@ export declare class RelationIndex {
     build(name: string): Promise<any>;
     query(name: string, selector: any, order?: Order[], include_docs?: boolean): Promise<never>;
     remove(name: string): Promise<never>;
-    update(name: string): Promise<never>;
+    update(name: string): Promise<any>;
     init(): Promise<any>;
     private getIndexes();
     private createTable(name, fields);

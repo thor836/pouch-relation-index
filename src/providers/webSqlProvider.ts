@@ -24,8 +24,10 @@ export default class WebSqlProvider implements Provider {
             let conn = this.openConnection();
             conn.transaction(tx =>
                 Utils.eachAsync(batch,
-                    (item, next) =>
-                        tx.executeSql(item[0], item[1], () => next(), (tx, e) => next(e)), e => !e ? resolve() : reject(e)), reject);
+                    (item, next) => {
+                        tx.executeSql(item[0], item[1], () => next(), (tx, e) => next(e))
+                    },
+                    e => !e ? resolve() : reject(e)), e => reject(e));
         });
     }
 

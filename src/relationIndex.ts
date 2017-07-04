@@ -119,13 +119,13 @@ export class RelationIndex {
         FROM \`document-store\` 
             JOIN \`by-sequence\` ON \`by-sequence\`.seq = \`document-store\`.winningseq  
         WHERE 
-            NOT EXISTS(SELECT 1 FROM ${tbl} WHERE \`document-store\`.id = ${tbl}.id )  
+            NOT EXISTS(SELECT 1 FROM ${tbl} WHERE \`document-store\`.id like ${tbl}.id )  
             AND 
             substr(\`document-store\`.id, 1, ${docTypeLen}) = ?  
             AND 
             \`by-sequence\`.deleted = 0`;
 
-        this.provider.executeSql(sql, [index.doc_type])
+        return this.provider.executeSql(sql, [index.doc_type])
             .then(res => {
                 let docs = [];
                 for (let i = 0; i < res.rows.length; i++) {
@@ -137,7 +137,7 @@ export class RelationIndex {
 
                 let sqlStatements = docs.map(function (r) {
                     let args = fields.map(f => {
-                        let v = Utils.resolve(r.doc, f);
+                        let v = Utils.resolve(r, f);
                         return typeof v === 'string' ? v.toLowerCase() : v;
                     });
                     return [`INSERT INTO ${tbl} VALUES (${p})`, args];

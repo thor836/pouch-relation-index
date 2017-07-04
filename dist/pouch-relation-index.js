@@ -312,9 +312,9 @@ var WebSqlProvider = (function () {
             var conn = _this.openConnection();
             conn.transaction(function (tx) {
                 return utils_1.default.eachAsync(batch, function (item, next) {
-                    return tx.executeSql(item[0], item[1], function () { return next(); }, function (tx, e) { return next(e); });
+                    tx.executeSql(item[0], item[1], function () { return next(); }, function (tx, e) { return next(e); });
                 }, function (e) { return !e ? resolve() : reject(e); });
-            }, reject);
+            }, function (e) { return reject(e); });
         });
     };
     WebSqlProvider.prototype.openConnection = function () {
@@ -488,8 +488,8 @@ var RelationIndex = (function () {
         var docTypeLen = index.doc_type.length;
         var fields = ['_id', '_rev'].concat(index.fields.map(function (f) { return f.name; }));
         var p = Array(fields.length).fill('?');
-        var sql = "\n        SELECT \n            `document-store`.id AS id, \n            `by-sequence`.rev AS rev, \n            `by-sequence`.json AS data \n        FROM `document-store` \n            JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq  \n        WHERE \n            NOT EXISTS(SELECT 1 FROM " + tbl + " WHERE `document-store`.id = " + tbl + ".id )  \n            AND \n            substr(`document-store`.id, 1, " + docTypeLen + ") = ?  \n            AND \n            `by-sequence`.deleted = 0";
-        this.provider.executeSql(sql, [index.doc_type])
+        var sql = "\n        SELECT \n            `document-store`.id AS id, \n            `by-sequence`.rev AS rev, \n            `by-sequence`.json AS data \n        FROM `document-store` \n            JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq  \n        WHERE \n            NOT EXISTS(SELECT 1 FROM " + tbl + " WHERE `document-store`.id like " + tbl + ".id )  \n            AND \n            substr(`document-store`.id, 1, " + docTypeLen + ") = ?  \n            AND \n            `by-sequence`.deleted = 0";
+        return this.provider.executeSql(sql, [index.doc_type])
             .then(function (res) {
             var docs = [];
             for (var i = 0; i < res.rows.length; i++) {
@@ -500,7 +500,7 @@ var RelationIndex = (function () {
                 return;
             var sqlStatements = docs.map(function (r) {
                 var args = fields.map(function (f) {
-                    var v = utils_1.default.resolve(r.doc, f);
+                    var v = utils_1.default.resolve(r, f);
                     return typeof v === 'string' ? v.toLowerCase() : v;
                 });
                 return ["INSERT INTO " + tbl + " VALUES (" + p + ")", args];
