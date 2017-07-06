@@ -444,21 +444,21 @@ var RelationIndex = (function () {
         return this.provider.executeSql("DELETE FROM " + tbl)
             .then(function () { return _this.fillIndexTable(index); });
     };
-    RelationIndex.prototype.query = function (name, selector, order, include_docs) {
-        if (include_docs === void 0) { include_docs = true; }
+    RelationIndex.prototype.query = function (name, options) {
         var index = this.indexes[name];
         if (!index)
             return Promise.reject(new indexNotFoundError_1.default(name));
         var tbl = utils_1.default.wrap("" + INDEX_PREFIX + name);
-        var q = selector ? queryBuilder_1.default.query(selector, "" + INDEX_PREFIX + name) : null;
-        var orderBy = order && order.length ? order.map(function (o) { return tbl + "." + utils_1.default.wrap(o.field || (o + '')) + " " + (o.dir || 'ASC'); }).join() : '';
+        var q = options.selector ? queryBuilder_1.default.query(options.selector, "" + INDEX_PREFIX + name) : null;
+        var orderBy = options.order && options.order.length ? options.order.map(function (o) { return tbl + "." + utils_1.default.wrap(o.field || (o + '')) + " " + (o.dir || 'ASC'); }).join() : '';
         var sql;
-        if (include_docs)
+        if (options.include_docs != false)
             sql = "\n            SELECT\n                `document-store`.id AS id,\n                `by-sequence`.rev AS rev,\n                `by-sequence`.json AS data \n            FROM `document-store` \n                JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq \n                JOIN " + tbl + " ON `document-store`.id = " + tbl + ".id \n            WHERE \n                " + (q.where ? q.where + ' AND ' : '') + " \n                `by-sequence`.deleted = 0 \n            ORDER BY " + (orderBy ? orderBy + ',' : '') + " `document-store`.id ASC";
         else {
             var flds = index.fields.map(function (f) { return tbl + utils_1.default.wrap(f.name); });
             sql = "SELECT " + flds.join() + " FROM " + tbl + " WHERE " + (q.where ? q.where + ' AND ' : '') + " 1 = 1 " + (orderBy ? 'ORDER BY ' + orderBy + ',' : '');
         }
+        sql = sql + " " + (options.limit ? 'LIMIT ' + options.limit : '') + " " + (options.start ? 'OFFSET ' + options.start : '');
         return this.provider.executeSql(sql, q.args)
             .then(function (res) {
             var docs = [];

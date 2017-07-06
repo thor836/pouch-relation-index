@@ -11,6 +11,8 @@ import {IndexInfo, Field, Order} from "./types";
 const INDEX_TABLE = 'relation-indexes';
 const INDEX_PREFIX = '_ri_';
 
+export type QueryOptions = {selector: any, order?: Order[], start?: number, limit?: number, include_docs?: boolean };
+
 export class RelationIndex {
 
     private _init = false;
@@ -51,16 +53,16 @@ export class RelationIndex {
             .then(() => this.fillIndexTable(index));
     }
 
-    query(name: string, selector: any, order?: Order[], include_docs: boolean = true) {
+    query(name: string, options: QueryOptions) {
         let index = this.indexes[name];
         if (!index)
             return Promise.reject(new IndexNotFoundError(name));
 
         let tbl = Utils.wrap(`${INDEX_PREFIX}${name}`);
-        let q = selector ? QueryBuilder.query(selector, `${INDEX_PREFIX}${name}`) : null;
-        let orderBy = order && order.length ? order.map(o => `${tbl}.${Utils.wrap(o.field || (o + ''))} ${o.dir || 'ASC'}`).join() : '';
+        let q = options.selector ? QueryBuilder.query(options.selector, `${INDEX_PREFIX}${name}`) : null;
+        let orderBy = options.order && options.order.length ? options.order.map(o => `${tbl}.${Utils.wrap(o.field || (o + ''))} ${o.dir || 'ASC'}`).join() : '';
         let sql;
-        if (include_docs)
+        if (options.include_docs != false)
             sql = `
             SELECT
                 \`document-store\`.id AS id,
@@ -77,6 +79,7 @@ export class RelationIndex {
             let flds = index.fields.map(f => tbl + Utils.wrap(f.name));
             sql = `SELECT ${flds.join()} FROM ${tbl} WHERE ${q.where ? q.where + ' AND ' : ''} 1 = 1 ${orderBy ? 'ORDER BY ' + orderBy + ',' : ''}`;
         }
+        sql = `${sql} ${options.limit ? 'LIMIT ' + options.limit : ''} ${options.start ? 'OFFSET ' + options.start : ''}`;
 
         return this.provider.executeSql(sql, q.args)
             .then(res => {

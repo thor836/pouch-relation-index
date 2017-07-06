@@ -3,6 +3,13 @@
 /// <reference types="pouchdb-replication" />
 import { Provider } from "./providers/provider";
 import { IndexInfo, Order } from "./types";
+export declare type QueryOptions = {
+    selector: any;
+    order?: Order[];
+    start?: number;
+    limit?: number;
+    include_docs?: boolean;
+};
 export declare class RelationIndex {
     private readonly db;
     private readonly provider;
@@ -12,7 +19,7 @@ export declare class RelationIndex {
     info(name: string): Promise<never>;
     create(options: IndexInfo): Promise<never>;
     build(name: string): Promise<any>;
-    query(name: string, selector: any, order?: Order[], include_docs?: boolean): Promise<never>;
+    query(name: string, options: QueryOptions): Promise<never>;
     remove(name: string): Promise<never>;
     update(name: string): Promise<any>;
     init(): Promise<any>;
