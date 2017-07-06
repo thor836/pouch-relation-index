@@ -275,6 +275,8 @@ var SqliteProvider = (function (_super) {
     SqliteProvider.prototype.openConnection = function () {
         return window['sqlitePlugin'].openDatabase({
             name: this.db,
+            location: 'default',
+            androidDatabaseImplementation: 2,
             version: 1,
             description: this.db,
             size: 5000000
