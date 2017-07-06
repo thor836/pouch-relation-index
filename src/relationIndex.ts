@@ -220,7 +220,7 @@ export class RelationIndex {
 
         let provider: Provider;
         if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
-            provider = new SqliteProvider(db.prefix + db.name);
+            provider = new SqliteProvider(db.name);
         else if (db.adapter === 'websql')
             provider = new WebSqlProvider(db.prefix + db.name, openDatabase);
         else

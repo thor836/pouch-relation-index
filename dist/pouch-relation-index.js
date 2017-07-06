@@ -580,7 +580,7 @@ var RelationIndex = (function () {
             return Promise.resolve(null);
         var provider;
         if (db.adapter === 'cordova-sqlite' && window['sqlitePlugin'])
-            provider = new sqliteProvider_1.default(db.prefix + db.name);
+            provider = new sqliteProvider_1.default(db.name);
         else if (db.adapter === 'websql')
             provider = new webSqlProvider_1.default(db.prefix + db.name, openDatabase);
         else
