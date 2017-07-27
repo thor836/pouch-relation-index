@@ -619,7 +619,7 @@ var Utils = (function () {
         }
     };
     Utils.fieldsToSql = function (fields) {
-        return fields.map(function (f) { return Utils.wrap(f.name) + " " + f.type + " " + (f.primary_key ? 'NOT NULL PRIMARY KEY' : ''); }).join();
+        return fields.map(function (f) { return Utils.wrap(f.name) + " " + (f.type || '') + " " + (f.primary_key ? 'NOT NULL PRIMARY KEY' : ''); }).join();
     };
     Utils.resolve = function (obj, path, defValue) {
         if (defValue === void 0) { defValue = null; }
