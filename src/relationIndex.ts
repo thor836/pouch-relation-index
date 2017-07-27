@@ -31,10 +31,10 @@ export class RelationIndex {
         if (this.indexes[options.name])
             return Promise.reject(new IndexExistsError(options.name));
         let fields = options.fields.map(f => {
-            return {name: f.name || (f + ''), type: f.type || 'TEXT'};
+            return {name: f.name || (f + ''), type: f.type || ''};
         });
-        let internalFields = [{name: 'id', type: 'TEXT', primary_key: true},
-            {name: 'rev', type: 'TEXT'}]
+        let internalFields = [{name: 'id', primary_key: true},
+            {name: 'rev'}]
             .concat(fields);
         return this.createTable(`${INDEX_PREFIX}${options.name}`, internalFields)
             .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(fields)]))

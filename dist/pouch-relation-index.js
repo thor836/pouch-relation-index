@@ -424,10 +424,10 @@ var RelationIndex = (function () {
         if (this.indexes[options.name])
             return Promise.reject(new indexExistsError_1.default(options.name));
         var fields = options.fields.map(function (f) {
-            return { name: f.name || (f + ''), type: f.type || 'TEXT' };
+            return { name: f.name || (f + ''), type: f.type || '' };
         });
-        var internalFields = [{ name: 'id', type: 'TEXT', primary_key: true },
-            { name: 'rev', type: 'TEXT' }]
+        var internalFields = [{ name: 'id', primary_key: true },
+            { name: 'rev' }]
             .concat(fields);
         return this.createTable("" + INDEX_PREFIX + options.name, internalFields)
             .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(fields)]); })
