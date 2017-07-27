@@ -122,7 +122,7 @@ export class RelationIndex {
         FROM \`document-store\` 
             JOIN \`by-sequence\` ON \`by-sequence\`.seq = \`document-store\`.winningseq  
         WHERE 
-            NOT EXISTS(SELECT 1 FROM ${tbl} WHERE \`document-store\`.id like ${tbl}.id )  
+            NOT EXISTS(SELECT 1 FROM ${tbl} WHERE \`document-store\`.id = ${tbl}.id COLLATE NOCASE)  
             AND 
             substr(\`document-store\`.id, 1, ${docTypeLen}) = ?  
             AND 

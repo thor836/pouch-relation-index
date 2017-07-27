@@ -490,7 +490,7 @@ var RelationIndex = (function () {
         var docTypeLen = index.doc_type.length;
         var fields = ['_id', '_rev'].concat(index.fields.map(function (f) { return f.name; }));
         var p = Array(fields.length).fill('?');
-        var sql = "\n        SELECT \n            `document-store`.id AS id, \n            `by-sequence`.rev AS rev, \n            `by-sequence`.json AS data \n        FROM `document-store` \n            JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq  \n        WHERE \n            NOT EXISTS(SELECT 1 FROM " + tbl + " WHERE `document-store`.id like " + tbl + ".id )  \n            AND \n            substr(`document-store`.id, 1, " + docTypeLen + ") = ?  \n            AND \n            `by-sequence`.deleted = 0";
+        var sql = "\n        SELECT \n            `document-store`.id AS id, \n            `by-sequence`.rev AS rev, \n            `by-sequence`.json AS data \n        FROM `document-store` \n            JOIN `by-sequence` ON `by-sequence`.seq = `document-store`.winningseq  \n        WHERE \n            NOT EXISTS(SELECT 1 FROM " + tbl + " WHERE `document-store`.id = " + tbl + ".id COLLATE NOCASE)  \n            AND \n            substr(`document-store`.id, 1, " + docTypeLen + ") = ?  \n            AND \n            `by-sequence`.deleted = 0";
         return this.provider.executeSql(sql, [index.doc_type])
             .then(function (res) {
             var docs = [];
