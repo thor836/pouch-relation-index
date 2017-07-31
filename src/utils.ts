@@ -11,7 +11,7 @@ export default class Utils {
     }
 
     static fieldsToSql(fields: Field[]) {
-        return fields.map(f => `${Utils.wrap(f.name)} ${f.type || ''} ${f.primary_key ? 'NOT NULL PRIMARY KEY' : ''}`).join();
+        return fields.map(f => `${Utils.wrap(f.name)} ${f.type || ''}`).join();
     }
 
     static resolve(obj: {}, path: string, defValue: any = null) {

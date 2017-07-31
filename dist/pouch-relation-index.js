@@ -426,10 +426,27 @@ var RelationIndex = (function () {
         var fields = options.fields.map(function (f) {
             return { name: f.name || (f + ''), type: f.type || '' };
         });
-        var internalFields = [{ name: 'id', primary_key: true },
-            { name: 'rev' }]
+        var internalFields = [
+            { name: 'id', unique: true },
+            { name: 'rev', index: false }
+        ]
             .concat(fields);
         return this.createTable("" + INDEX_PREFIX + options.name, internalFields)
+            .then(function () {
+            var batch = internalFields
+                .filter(function (f) { return f.index !== false; })
+                .map(function (f) { return "CREATE " + (f.unique ? 'UNIQUE' : '') + " INDEX \"" + INDEX_PREFIX + options.name + "_" + f.name + "\" ON \"" + INDEX_PREFIX + options.name + "\" (`" + f.name + "` ASC)"; });
+            return new Promise(function (resolve, reject) {
+                utils_1.default.eachAsync(batch, function (b, next) {
+                    _this.provider.executeSql(b, [])
+                        .then(function () {
+                        next();
+                    }, function (e) {
+                        next(e);
+                    });
+                }, function (e) { return !e ? resolve() : reject(e); });
+            });
+        })
             .then(function () { return _this.provider.executeSql("INSERT INTO " + utils_1.default.wrap(INDEX_TABLE) + " VALUES (?,?,?)", [options.name, options.doc_type, JSON.stringify(fields)]); })
             .then(function () {
             _this.indexes[options.name] = Object.assign({}, options, { fields: fields });
@@ -619,7 +636,7 @@ var Utils = (function () {
         }
     };
     Utils.fieldsToSql = function (fields) {
-        return fields.map(function (f) { return Utils.wrap(f.name) + " " + (f.type || '') + " " + (f.primary_key ? 'NOT NULL PRIMARY KEY' : ''); }).join();
+        return fields.map(function (f) { return Utils.wrap(f.name) + " " + (f.type || ''); }).join();
     };
     Utils.resolve = function (obj, path, defValue) {
         if (defValue === void 0) { defValue = null; }

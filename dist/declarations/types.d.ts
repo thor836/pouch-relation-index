@@ -5,7 +5,8 @@ export declare type Order = {
 export declare type Field = {
     name: string;
     type?: string;
-    primary_key?: boolean;
+    index?: boolean;
+    unique?: boolean;
 };
 export declare type IndexInfo = {
     name: string;

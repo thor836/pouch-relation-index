@@ -11,7 +11,7 @@ import {IndexInfo, Field, Order} from "./types";
 const INDEX_TABLE = 'relation-indexes';
 const INDEX_PREFIX = '_ri_';
 
-export type QueryOptions = {selector: any, order?: Order[], start?: number, limit?: number, include_docs?: boolean };
+export type QueryOptions = { selector: any, order?: Order[], start?: number, limit?: number, include_docs?: boolean };
 
 export class RelationIndex {
 
@@ -30,13 +30,30 @@ export class RelationIndex {
     create(options: IndexInfo) {
         if (this.indexes[options.name])
             return Promise.reject(new IndexExistsError(options.name));
-        let fields = options.fields.map(f => {
+        let fields: Field[] = options.fields.map(f => {
             return {name: f.name || (f + ''), type: f.type || ''};
         });
-        let internalFields = [{name: 'id', primary_key: true},
-            {name: 'rev'}]
-            .concat(fields);
+        let internalFields: Field[] = [
+            {name: 'id', unique: true},
+            {name: 'rev', index: false}]
+            .concat(fields as any);
         return this.createTable(`${INDEX_PREFIX}${options.name}`, internalFields)
+            .then(() => {
+                let batch = internalFields
+                    .filter(f => f.index !== false)
+                    .map(f => `CREATE ${f.unique ? 'UNIQUE' : ''} INDEX "${INDEX_PREFIX}${options.name}_${f.name}" ON "${INDEX_PREFIX}${options.name}" (\`${f.name}\` ASC)`);
+                return new Promise((resolve, reject) => {
+                    Utils.eachAsync(batch,
+                        (b, next) => {
+                            this.provider.executeSql(b, [])
+                                .then(() => {
+                                    next()
+                                }, e => {
+                                    next(e)
+                                });
+                        }, e => !e ? resolve() : reject(e));
+                });
+            })
             .then(() => this.provider.executeSql(`INSERT INTO ${Utils.wrap(INDEX_TABLE)} VALUES (?,?,?)`, [options.name, options.doc_type, JSON.stringify(fields)]))
             .then(() => {
                 this.indexes[options.name] = Object.assign({}, options, {fields});
